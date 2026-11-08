@@ -5,10 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "codeshield"
 version = "0.1.0"
-description = "Local-first credential security CLI (Phase 0 foundation)"
+description = "Local-first offline credential detection CLI"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["pydantic==2.12.4"]
+dependencies = ["pydantic==2.12.4", "regex==2025.11.3"]
 
 [project.optional-dependencies]
 dev = ["pytest==9.0.1"]

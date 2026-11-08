@@ -1,3 +1,3 @@
-"""CodeShield foundation. No scanning or remediation is implemented yet."""
+"""CodeShield offline detection. No AI assessment or remediation."""
 
 __version__ = "0.1.0"

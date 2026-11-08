@@ -1,7 +1,19 @@
-# Phase 0: configuration contract only; detection is not implemented yet.
+# Offline Phase 1 detector defaults; provider keys never belong in this file.
 provider = "rules"
 blocking_severity = "high"
 max_file_bytes = 1048576
 max_scan_bytes = 10485760
 git_timeout_seconds = 10
+scan_timeout_seconds = 60
+max_files = 10000
+max_findings = 1000
+min_secret_length = 8
+entropy_min_length = 20
+entropy_threshold = 3.5
 exclude_dirs = [".git", ".venv", "node_modules", "vendor", "dist", "build"]
+
+# Optional additional timed regex rule. A nonempty named 'secret' group is required.
+# [[patterns]]
+# rule_id = "internal-token"
+# expression = '(?P<secret>INTERNAL_[A-Z0-9]{24})'
+# severity = "high"

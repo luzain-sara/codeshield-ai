@@ -1,4 +1,4 @@
-"""Phase 0 CLI: diagnostics and explicit, fail-closed placeholders."""
+"""Offline detection CLI with fail-closed, non-mutating scan commands."""
 
 import argparse
 import shutil
@@ -9,6 +9,9 @@ from pathlib import Path
 from codeshield import __version__
 from codeshield.config import ConfigError, load_config
 from codeshield.models import ExitCode, Provider
+from codeshield.errors import ScanError
+from codeshield.reporting import render, write_report
+from codeshield.scanner import scan
 
 
 def doctor(config_path: Path | None, provider: str | None) -> int:
@@ -18,10 +21,10 @@ def doctor(config_path: Path | None, provider: str | None) -> int:
         print(str(exc), file=sys.stderr)
         return ExitCode.CONFIG_ERROR
     selected = Provider(provider) if provider else config.provider
-    print(f"CodeShield {__version__} - Phase 0 diagnostics")
+    print(f"CodeShield {__version__} - setup diagnostics")
     print("Configuration: valid")
     if selected != Provider.RULES:
-        print("Selected provider is not implemented in Phase 0.", file=sys.stderr)
+        print("Selected provider is not implemented in Phase 1.", file=sys.stderr)
         return ExitCode.CONFIG_ERROR
     print("Provider: rules (offline; no provider calls)")
     git = shutil.which("git")
@@ -61,13 +64,15 @@ def doctor(config_path: Path | None, provider: str | None) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="codeshield", description="CodeShield-AI: Phase 0 foundation (scanner not implemented)."
+        prog="codeshield", description="CodeShield-AI: offline credential detection (Phase 1)."
     )
     parser.add_argument("--version", action="version", version=f"codeshield {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("doctor", "scan", "explain", "fix", "init"):
         command = commands.add_parser(name, help=(
-            "Check foundation setup" if name == "doctor" else "Reserved; unavailable in Phase 0"
+            "Check foundation setup" if name == "doctor" else
+            "Scan staged additions (default) or an explicit worktree path" if name == "scan" else
+            "Reserved; unavailable in Phase 1"
         ))
         command.add_argument("--config", type=Path, help="Explicit TOML configuration file")
         command.add_argument("--provider", choices=[p.value for p in Provider])
@@ -96,8 +101,32 @@ def main(argv: list[str] | None = None) -> int:
         return doctor(args.config, args.provider)
     if args.command == "scan" and bool(args.base_ref) != bool(args.head_ref):
         parser.error("--base-ref and --head-ref must be supplied together")
+    if args.command == "scan":
+        if args.base_ref:
+            print("Git-ref scanning is deferred to Phase 4; no scan performed.", file=sys.stderr)
+            return ExitCode.VALIDATION_FAILURE
+        try:
+            config = load_config(args.config)
+            selected = Provider(args.provider) if args.provider else config.provider
+            if selected != Provider.RULES:
+                raise ConfigError("Only the offline rules provider is implemented in Phase 1.")
+            result = scan(config, path=args.path)
+            report = render(result, args.format)
+            if args.output:
+                write_report(args.output, report)
+            sys.stdout.write(report)
+            return ExitCode.BLOCKING_FINDINGS if result.summary.blocking else ExitCode.SUCCESS
+        except ConfigError as exc:
+            print(str(exc), file=sys.stderr)
+            return ExitCode.CONFIG_ERROR
+        except ScanError as exc:
+            print(str(exc), file=sys.stderr)
+            return ExitCode.VALIDATION_FAILURE
+        except (OSError, UnicodeError, ValueError, TimeoutError):
+            print("Scan or report validation failed; no complete result is available.", file=sys.stderr)
+            return ExitCode.VALIDATION_FAILURE
     print(
-        f"{args.command} is not implemented in Phase 0. No scan or file changes performed.",
+        f"{args.command} is not implemented in Phase 1. No scan or file changes performed.",
         file=sys.stderr,
     )
     return ExitCode.VALIDATION_FAILURE

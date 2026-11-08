@@ -50,11 +50,18 @@ class Finding(Contract):
     rule_id: str = Field(min_length=1)
     path: str = Field(min_length=1)
     line: int = Field(ge=1, strict=True)
+    column: int = Field(default=1, ge=1, strict=True)
     severity: Severity
     confidence: float = Field(ge=0, le=1, allow_inf_nan=False)
     assessment_source: Provider
     redacted_sample: str
     recommendation: str
+    evidence: tuple[str, ...] = ()
+
+
+class SkippedFile(Contract):
+    path: str
+    reason: str
 
 
 class Summary(Contract):
@@ -79,6 +86,8 @@ class ScanResult(Contract):
     findings: tuple[Finding, ...] = ()
     summary: Summary = Field(default_factory=Summary)
     validation_status: ValidationStatus = ValidationStatus.NOT_RUN
+    files_scanned: int = Field(default=0, ge=0, strict=True)
+    skipped_files: tuple[SkippedFile, ...] = ()
 
     @model_validator(mode="after")
     def check_consistency(self) -> "ScanResult":

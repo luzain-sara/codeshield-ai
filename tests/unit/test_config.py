@@ -34,6 +34,11 @@ def test_load_config(tmp_path):
     'max_scan_bytes = 1',
     'git_timeout_seconds = 0',
     'exclude_dirs = [1]',
+    'entropy_threshold = 9',
+    'entropy_min_length = 0',
+    'scan_timeout_seconds = 0',
+    'max_files = 0',
+    'max_findings = 0',
     'provider = "FAKE_CONFIG_SENTINEL',
 ])
 def test_invalid_config_is_rejected_without_echoing_values(tmp_path, text):

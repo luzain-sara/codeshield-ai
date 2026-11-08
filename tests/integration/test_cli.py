@@ -72,8 +72,6 @@ def test_invalid_config_does_not_leak(repo):
 
 
 @pytest.mark.parametrize("args", [
-    ["scan", "--staged"], ["scan", "--path", "."],
-    ["scan", "--base-ref", "main", "--head-ref", "HEAD"],
     ["explain", "example"], ["fix", "example", "--dry-run"],
     ["fix", "example", "--apply", "--yes"], ["init"],
 ])
@@ -81,7 +79,7 @@ def test_unimplemented_commands_fail_closed_and_do_not_write(repo, args):
     before = set(repo.rglob("*"))
     result = cli(repo, *args)
     assert result.returncode == 3
-    assert "not implemented in Phase 0" in result.stderr
+    assert "not implemented in Phase 1" in result.stderr
     assert set(repo.rglob("*")) == before
 
 
