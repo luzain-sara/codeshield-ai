@@ -81,6 +81,59 @@ interrupted, inspect any partially created defaults before retrying.
 
 A gate must reject every nonzero result. Exit 0 never proves a repository secure.
 
+## Human terminal output
+
+Human scans use Rich for a compact CodeShield-AI header, summary, numbered finding
+panels, and a final security-gate result. Panels show severity, location, rule,
+confidence, actual verification source/status, finding ID, redacted evidence,
+explanation and a next action. Mock assessments are explicitly labeled `mock`.
+No original source, secret values, model requests or private plans are rendered.
+
+```sh
+codeshield scan --staged
+codeshield scan --staged --no-color
+codeshield --no-color scan --path .
+codeshield scan --format json --output report.json
+codeshield fix FINDING_ID --dry-run --no-color
+```
+
+Example human report excerpts (invented metadata; panels omitted here):
+
+```text
+CodeShield-AI
+Scope: staged  |  provider: mock
+Files scanned:     2
+Skipped files:     0
+Total findings:    1
+Blocking findings: 1
+
+Finding 1 | HIGH
+Location:     src/service.py:7:4
+Rule:         secret-assignment
+Confidence:   85%
+Source:       mock
+Verification: ok | likely_secret | cached=false
+Finding ID:   aaaaaaaaaaaaaaaaaaaaaaaa
+Evidence: <REDACTED_SECRET>
+
+Security gate: BLOCKED
+```
+
+`PASS` means a completed scan found no blocking findings in the selected scope;
+`BLOCKED` means blocking findings remain; `ERROR` means scanning, configuration,
+report creation or verification could not complete. Existing exit codes still
+apply. A preview or declined approval never claims a clean security gate; applied
+fixes stay `BLOCKED` until intentional restaging and a fresh scan.
+
+Colors are automatic only on terminals; `--no-color`, `NO_COLOR` (even empty),
+`CLICOLOR=0`, and `TERM=dumb` disable colors. Pipes and saved human reports use
+plain ASCII borders without ANSI codes. Terminal width is capped at 96 columns;
+long metadata wraps. Unsupported Unicode characters are escaped on legacy stream
+encodings. No status depends on color alone. JSON output is byte-compatible with
+the existing serializer, never imports Rich, and contains no banners or panels.
+`explain` retains its existing sanitized JSON output. For automation, prefer JSON
+and exit codes over parsing human text. Docker scans also accept `--no-color`.
+
 ## Git hooks, pull requests and Docker
 
 ```sh

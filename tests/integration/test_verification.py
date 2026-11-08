@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -85,7 +86,8 @@ def test_json_and_human_reports_disclose_mock_provenance(git_repo, monkeypatch, 
     assert SECRET not in output.out + output.err
     assert main(["scan"]) == 1
     output = capsys.readouterr()
-    assert "provider: mock" in output.out and "source=mock" in output.out
+    assert "provider: mock" in output.out
+    assert re.search(r"Source:\s+mock", output.out)
     assert SECRET not in output.out + output.err
 
 

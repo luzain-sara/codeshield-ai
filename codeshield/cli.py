@@ -19,6 +19,15 @@ from codeshield.remediation.patcher import apply_plan
 import re
 
 
+def write_error(message: str, code: int, *, human=False, no_color=False):
+    if human:
+        from codeshield.terminal import render_notice, terminal_options
+        sys.stderr.write(render_notice(message, f"Security gate: ERROR | exit {code}", style="red",
+                                       **terminal_options(no_color, sys.stderr)))
+    else:
+        print(message, file=sys.stderr)
+
+
 def doctor(config_path: Path | None, provider: str | None) -> int:
     try:
         config = load_config(config_path)
@@ -78,6 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="codeshield", description="CodeShield-AI: local credential scanning, verification and approved remediation."
     )
     parser.add_argument("--version", action="version", version=f"codeshield {__version__}")
+    parser.add_argument("--no-color", action="store_true", help="Disable human-output colors")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("init", help="Create missing offline defaults without overwriting existing files")
     hook = commands.add_parser("hook", help="Install or remove the managed offline pre-commit gate")
@@ -110,6 +120,9 @@ def build_parser() -> argparse.ArgumentParser:
             command.add_argument("--yes", action="store_true")
             command.add_argument("--env-name", help="Approve a destination environment variable name")
             command.add_argument("--store-secret", action="store_true", help="Explicitly approve storing the value in an ignored private .env during apply")
+    for command in commands.choices.values():
+        command.add_argument("--no-color", action="store_true", default=argparse.SUPPRESS,
+                             help="Disable human-output colors (also honors NO_COLOR)")
     return parser
 
 
@@ -152,9 +165,12 @@ def main(argv: list[str] | None = None) -> int:
                 print(found[0].model_dump_json(indent=2))
                 return ExitCode.SUCCESS
             plan = plan_fix(args.finding_id, config, cwd=Path.cwd(), env_name=args.env_name, store_secret=args.store_secret)
-            sys.stdout.write(plan.preview())
+            from codeshield.terminal import render_plan, render_notice, terminal_options
+            options = terminal_options(args.no_color)
+            sys.stdout.write(render_plan(plan.preview(), **options))
             if not args.apply:
-                print("Dry run: no files changed.")
+                sys.stdout.write(render_notice("Dry run: no files changed. The security gate has not been reassessed.",
+                                               "Approval result: NOT REQUESTED", style="cyan", **options))
                 return ExitCode.SUCCESS
             approved = args.yes
             if not approved:
@@ -165,18 +181,21 @@ def main(argv: list[str] | None = None) -> int:
                 except (EOFError, KeyboardInterrupt):
                     approved = False
             if not approved:
-                print("Approval declined; no files changed.")
+                sys.stdout.write(render_notice("Approval declined; no files changed. The staged finding remains unresolved.",
+                                               "Approval result: DECLINED", **options))
                 return ExitCode.SUCCESS
-            sys.stdout.write(apply_plan(plan, approved=True))
+            applied = apply_plan(plan, approved=True)
+            sys.stdout.write(render_notice(applied, "Approval: APPROVED | Security gate: BLOCKED", **options))
             return ExitCode.BLOCKING_FINDINGS  # The unchanged index must be restaged and checked.
         except ConfigError as exc:
-            print(str(exc), file=sys.stderr)
+            write_error(str(exc), ExitCode.CONFIG_ERROR, human=args.command == "fix", no_color=args.no_color)
             return ExitCode.CONFIG_ERROR
         except ScanError as exc:
-            print(str(exc), file=sys.stderr)
+            write_error(str(exc), ExitCode.VALIDATION_FAILURE, human=args.command == "fix", no_color=args.no_color)
             return ExitCode.VALIDATION_FAILURE
         except (OSError, UnicodeError, ValueError, RecursionError, TimeoutError):
-            print("Remediation or explanation failed safely; review the repository and rerun a dry run.", file=sys.stderr)
+            write_error("Remediation or explanation failed safely; review the repository and rerun a dry run.",
+                        ExitCode.VALIDATION_FAILURE, human=args.command == "fix", no_color=args.no_color)
             return ExitCode.VALIDATION_FAILURE
     if args.command == "scan" and bool(args.base_ref) != bool(args.head_ref):
         parser.error("--base-ref and --head-ref must be supplied together")
@@ -193,21 +212,27 @@ def main(argv: list[str] | None = None) -> int:
                 print("Gemini opt-in: only sanitized structural context may be sent to Google; no raw source or credential values.", file=sys.stderr)
             result = scan(config, path=args.path, live_enabled=args.allow_live,
                           base_ref=args.base_ref, head_ref=args.head_ref, merge_base=args.merge_base)
-            report = render(result, args.format)
+            options = {}
+            if args.format == "human":
+                from codeshield.terminal import terminal_options
+                options = terminal_options(args.no_color)
+            report = render(result, args.format, **options)
             if args.output:
-                write_report(args.output, report)
+                # Saved human reports never inherit terminal color or width settings.
+                write_report(args.output, render(result, args.format) if args.format == "human" else report)
             sys.stdout.write(report)
             if result.validation_status == "failed":
                 print("Verification incomplete; findings remain unresolved and no fixes are authorized.", file=sys.stderr)
                 return ExitCode.VALIDATION_FAILURE
             return ExitCode.BLOCKING_FINDINGS if result.summary.blocking else ExitCode.SUCCESS
         except ConfigError as exc:
-            print(str(exc), file=sys.stderr)
+            write_error(str(exc), ExitCode.CONFIG_ERROR, human=args.format == "human", no_color=args.no_color)
             return ExitCode.CONFIG_ERROR
         except ScanError as exc:
-            print(str(exc), file=sys.stderr)
+            write_error(str(exc), ExitCode.VALIDATION_FAILURE, human=args.format == "human", no_color=args.no_color)
             return ExitCode.VALIDATION_FAILURE
         except (OSError, UnicodeError, ValueError, TimeoutError):
-            print("Scan or report validation failed; no complete result is available.", file=sys.stderr)
+            write_error("Scan or report validation failed; no complete result is available.", ExitCode.VALIDATION_FAILURE,
+                        human=args.format == "human", no_color=args.no_color)
             return ExitCode.VALIDATION_FAILURE
     return ExitCode.VALIDATION_FAILURE

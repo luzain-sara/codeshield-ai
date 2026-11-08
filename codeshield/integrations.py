@@ -175,6 +175,7 @@ def docker_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--format", choices=("human", "json"), default="human")
     parser.add_argument("--output")
     parser.add_argument("--config")
+    parser.add_argument("--no-color", action="store_true")
     args = parser.parse_args(argv)
     command = ["scan", "--provider", args.provider, "--format", args.format]
     for name in ("path", "base_ref", "head_ref", "output", "config"):
@@ -185,6 +186,8 @@ def docker_main(argv: list[str] | None = None) -> int:
         command.append("--staged")
     if args.merge_base:
         command.append("--merge-base")
+    if args.no_color:
+        command.append("--no-color")
     with automated():
         return main(command)
 
