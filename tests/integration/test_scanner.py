@@ -227,7 +227,7 @@ def test_cli_report_exit_code_privacy_and_no_source_index_mutation(git_repo, for
     source = write("a.py", f'password="{SECRET}"; unrelated="{OTHER}"\n')
     git("add", ".")
     before = source.read_bytes(), (root / ".git/index").read_bytes()
-    result = run_cli(root, "scan", "--staged", "--format", format, "--output", "report.json")
+    result = run_cli(root, "scan", "--provider", "rules", "--staged", "--format", format, "--output", "report.json")
     assert result.returncode == 1, result.stderr
     assert_private(result.stdout + result.stderr + (root / "report.json").read_text(encoding="utf-8"))
     assert before == (source.read_bytes(), (root / ".git/index").read_bytes())
@@ -256,7 +256,7 @@ def test_empty_scan_and_git_ref_mode_deferral(git_repo):
     assert "Phase 4" in result.stderr
 
 
-@pytest.mark.parametrize("provider", ["mock", "gemini"])
+@pytest.mark.parametrize("provider", ["gemini"])
 def test_provider_not_silently_used(git_repo, provider):
     root, git, write = git_repo
     result = run_cli(root, "scan", "--provider", provider)

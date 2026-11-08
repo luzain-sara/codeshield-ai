@@ -11,6 +11,9 @@ from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
 from codeshield import __version__
+from codeshield.agent.providers import require_live_opt_in
+from codeshield.agent.sanitizer import sanitize
+from codeshield.agent.workflow import verify_findings
 from codeshield.config import Config
 from codeshield.detectors.context import code_lines
 from codeshield.detectors.patterns import Detector, safe_path
@@ -19,7 +22,7 @@ from codeshield.git_diff import Git, parse_changes, staged_additions, valid_path
 from codeshield.models import (Finding, Provider, ScanResult, ScanScope, Severity,
                                SkippedFile, Summary, ValidationStatus)
 
-PROTECTED = {".git", ".hg", ".svn", ".venv", "venv", "__pycache__", "node_modules",
+PROTECTED = {".git", ".hg", ".svn", ".venv", ".codeshield", "venv", "__pycache__", "node_modules",
              "vendor", "dist", "build", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
 EXTENSIONS = {".py", ".js", ".jsx", ".ts", ".tsx", ".json", ".yaml", ".yml"}
 KEY_ONLY = re.compile(r'''["']?[A-Za-z_$][\w$.-]{0,100}["']?\s*[:=]\s*\(?\s*$''')
@@ -65,7 +68,10 @@ def contained_file(root: Path, relative: str) -> Path | None:
     return path
 
 
-def scan(config: Config, *, path: Path | None = None, cwd: Path | None = None) -> ScanResult:
+def scan(config: Config, *, path: Path | None = None, cwd: Path | None = None,
+         live_enabled: bool = False) -> ScanResult:
+    if config.provider == Provider.GEMINI:
+        require_live_opt_in(live_enabled)
     started = datetime.now(timezone.utc)
     cwd = cwd or Path.cwd()
     requested = None
@@ -88,6 +94,7 @@ def scan(config: Config, *, path: Path | None = None, cwd: Path | None = None) -
         raise ScanError("Unmerged index; resolve conflicts before scanning.")
     detector = Detector(config)
     findings = []
+    contexts = {}
     skipped = []
     files_scanned = volume = 0
 
@@ -110,7 +117,8 @@ def scan(config: Config, *, path: Path | None = None, cwd: Path | None = None) -
         pending = []
         prefix = ""
         allow_bare = relative.lower().endswith((".yaml", ".yml")) or PurePosixPath(relative).name.lower().startswith(".env")
-        for number, line in enumerate(code_lines(text, relative), 1):
+        cleaned_lines = code_lines(text, relative)
+        for number, line in enumerate(cleaned_lines, 1):
             git.check_deadline()
             context = prefix + line
             offset = len(prefix)
@@ -129,13 +137,16 @@ def scan(config: Config, *, path: Path | None = None, cwd: Path | None = None) -
         for number, candidate in pending:
             # Fingerprints use location/rule only, never raw candidate bytes or their hash.
             identity = json.dumps([display_path, candidate.rule_id, number, candidate.start + 1], ensure_ascii=True)
-            findings.append(Finding(
+            finding = Finding(
                 finding_id=hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24],
                 rule_id=candidate.rule_id, path=display_path, line=number, column=candidate.start + 1,
                 severity=candidate.severity, confidence=candidate.confidence, assessment_source=Provider.RULES,
                 redacted_sample="<REDACTED_SECRET>", evidence=(candidate.evidence,),
                 recommendation="Remove the hardcoded value. Rotate it if previously exposed; review and rescan staged changes.",
-            ))
+            )
+            findings.append(finding)
+            window = "\n".join(cleaned_lines[max(0, number - 2):number + 1])[:2048]
+            contexts[finding.finding_id] = sanitize(relative, window, candidate.rule_id)
 
     if requested is None:
         metadata = git.staged_metadata()
@@ -212,10 +223,13 @@ def scan(config: Config, *, path: Path | None = None, cwd: Path | None = None) -
     findings.sort(key=lambda item: (item.path, item.line, item.column, item.rule_id))
     blocking = sum(SEVERITY_ORDER[item.severity] >= SEVERITY_ORDER[config.blocking_severity] for item in findings)
     git.check_deadline()
+    verified = verify_findings(tuple(findings), contexts, config, git.root, live_enabled=live_enabled)
+    failed = any(item.verification.status != "ok" for item in verified)
     return ScanResult(
         run_id=uuid4(), scan_scope=ScanScope.STAGED if requested is None else ScanScope.WORKTREE,
         started_at=started, finished_at=datetime.now(timezone.utc), tool_version=__version__,
-        provider=Provider.RULES, findings=tuple(findings), summary=Summary(total=len(findings), blocking=blocking),
-        validation_status=ValidationStatus.PASSED, files_scanned=files_scanned,
+        provider=config.provider, verification_model=config.gemini_model if config.provider == Provider.GEMINI else None,
+        findings=verified, summary=Summary(total=len(findings), blocking=blocking),
+        validation_status=ValidationStatus.FAILED if failed else ValidationStatus.PASSED, files_scanned=files_scanned,
         skipped_files=tuple(sorted(skipped, key=lambda item: (item.path, item.reason))),
     )

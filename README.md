@@ -1,9 +1,11 @@
 # CodeShield-AI
 
-Local-first Python credential security CLI. **Phases 0 and 1 are implemented.**
+Local-first Python credential security CLI. **Phases 0 through 2 are implemented.**
 Detect likely hardcoded credentials offline in Git-staged additions, or opt into
 a working-tree scan. Reports contain sanitized metadata and fully redacted samples.
-No AI verification, remediation, pre-commit integration, or CI integration is implemented.
+Verification defaults to a deterministic offline mock. Explicitly enabled Gemini
+verification receives only sanitized structural context. Remediation, pre-commit
+integration, and CI integration are not implemented.
 
 ## Windows PowerShell setup
 
@@ -29,7 +31,7 @@ On Linux/macOS use `.venv/bin/python`, `.venv/bin/codeshield`, and `.venv/bin/py
 
 `codeshield doctor` loads `codeshield.toml` from the current directory, or uses safe
 defaults when absent. `codeshield doctor --config PATH` requires that file to exist.
-No parent-directory search or environment-file loading takes place.
+No parent-directory config search takes place. Configuration itself never loads keys.
 
 The included TOML lists every supported field: provider (`rules`, `mock`, `gemini`),
 blocking severity (`critical`, `high`, `medium`, `low`), positive integer file/scan byte
@@ -48,10 +50,77 @@ Additional rules can be configured with `[[patterns]]`, a unique `rule_id`, an
 commented example in `codeshield.toml`. Custom rules supplement built-ins and run
 with a 50 ms matching timeout. Empty candidate captures and timeouts fail closed.
 
-Rules is the offline default. Mock and Gemini are reserved configuration values;
-doctor and scan reject them as unavailable in this phase. API keys never belong in config.
-The blank `GEMINI_API_KEY` entry in `.env.example` is future setup guidance only.
-Scanning reads no provider keys from the environment and makes no provider requests.
+Mock is the offline default (changed from Phase 1 at the user's request). Explicit
+`--provider rules` preserves deterministic rules-only operation. Neither mode
+loads credentials, imports the optional SDK, calls a provider, or writes a cache.
+Mock decisions are marked `mock`, never presented as real model assessments.
+
+## Optional live Gemini verification
+
+Install the optional, pinned official Google Gen AI SDK and dotenv parser:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e '.[dev,gemini]'
+# Set GEMINI_API_KEY securely in your environment or in an ignored .env.
+.\.venv\Scripts\codeshield.exe scan --staged --provider gemini --allow-live
+```
+
+Both selecting `gemini` and passing `--allow-live` are required. Setting a provider
+in TOML alone cannot authorize a request. Live verification is disabled when CI,
+GITHUB_ACTIONS, GITLAB_CI, or TF_BUILD is set to a true value. A notice explains
+external context transmission before scanning. No live request is made for a
+clean scan or a cache hit. Model availability and quota depend on your account;
+`gemini_model` is configurable (default `gemini-3.5-flash-lite`).
+
+Credential precedence is `GEMINI_API_KEY` from the existing environment, then
+`GEMINI_API_KEY` from `.env` at the scanned repository root. An explicitly empty
+environment variable is an error, not permission to fall back to another key.
+No parent search, shell expansion, dotenv interpolation, or modification of the
+process environment occurs. Linked, oversized, missing, unreadable, or invalid
+credential files are rejected with fixed diagnostics. The blank `.env.example`
+is safe to track; actual credentials must never go in TOML or source control.
+Only an explicitly selected `doctor --provider gemini` checks credential loading;
+doctor makes no model request. Run doctor at the repository root.
+
+The sanitizer projects code into a finite schema: language, operation, framework
+hint, example/environment/comparison flags, and a fixed code skeleton containing
+`<REDACTED_SECRET_1>`. Original values, source literals, identifiers, comments,
+paths, custom regex expressions, and unrelated code are never sent. This is
+deliberately lossy, including for sensitive strings the detector did not recognize.
+Framework hints are conservative context metadata, not an authorization to edit.
+
+The bounded workflow executes only `inspect_context` and `detect_framework` on
+already-sanitized in-memory data, assesses once through a bounded verifier, then
+chooses a read-only policy. Gemini function calling and automatic tool execution
+are disabled; any returned tool call is rejected. Decisions require strict enums
+for classification, reason, and recommendation. Free-text, extra fields, malformed
+JSON, refusals, truncated output and unknown decisions cannot authorize a fix.
+
+All verification advice is advisory: even `false_positive` leaves the original
+finding, severity, detection confidence, and blocking count intact. Only a valid
+Gemini response or safe cache hit is labeled `gemini`; failures retain `rules`
+provenance, an `uncertain` decision, and a failed validation status. Such runs
+return exit **3**, with a sanitized report if detection completed. No edits occur.
+
+Quota controls: tiny prompts, 512 output tokens, a shared `max_api_calls` budget
+(default 5, including retries), `api_max_retries` (2), exponential backoff bounded
+at 5 seconds, request timeout (10 seconds), and a separate verification deadline
+(60 seconds). Only transient network errors, 429, and selected 5xx errors retry.
+The SDK's own retries are disabled, so budgets cannot multiply. A failed provider
+is not repeatedly queried for subsequent findings in the same run. SDK/HTTP logs
+are suppressed during serialized transport operations and logging is restored.
+Requests use the fixed Google endpoint with environment proxies and redirects disabled.
+
+Successful Gemini decisions are cached locally under
+`.codeshield/verification-cache.json` (Git-ignored by this project). Equivalent
+sanitized contexts share results across files/runs. Keys hash only the nonsecret
+projection, provider/model and prompt/policy version; values contain enum decisions
+and expiry times. No source, candidates, finding paths, raw responses, API keys,
+or hashes of credential values are cached. Cache TTL defaults to 86400 seconds;
+set `verification_cache_ttl_seconds=0` to disable it. The cache is bounded to 256
+entries, rejects unsafe data/links, and tolerates corruption or unavailable storage.
+Other repositories should also ignore `.codeshield/`. Cache failures do not permit
+findings to be dismissed. The cache is a performance hint, never trusted authorization.
 
 ## Commands and exit codes
 
@@ -86,8 +155,8 @@ not automatically exempt. Credential-named hexadecimal values remain suspicious.
 
 Human/JSON reports have stable finding IDs and ordering. Run UUIDs and timestamps
 vary by execution. Samples are completely replaced with `<REDACTED_SECRET>`;
-surrounding source is omitted. Findings disclose `rules` provenance, severity,
-confidence, evidence, location and review advice. Existing output files are never
+surrounding source is omitted. Findings disclose assessment provenance, severity,
+detection confidence, evidence, location, verification status and review advice. Existing output files are never
 overwritten. Failed scans emit a safe stderr diagnostic and no success report.
 The output destination must be new, writable, outside `.git`, with no linked parents.
 
@@ -99,7 +168,7 @@ is deferred to Phase 4. This release does not interpret a checkout index as a PR
 | --- | --- |
 | 0 | Successful operation; selected scan has no findings at/above blocking severity |
 | 1 | Findings at/above configured blocking severity |
-| 2 | Invocation/configuration error, including unavailable provider |
+| 2 | Invocation/configuration/credential error or missing live consent |
 | 3 | Scan/validation failure or an unimplemented operation (fail closed) |
 
 ## Project structure
@@ -111,20 +180,22 @@ is deferred to Phase 4. This release does not interpret a checkout index as a PR
 - `codeshield/detectors/`: regex rules, lexical comment filtering and entropy.
 - `codeshield/scanner.py`: snapshot selection, safety limits and stable findings.
 - `codeshield/reporting.py`: sanitized human/JSON rendering and exclusive output.
+- `codeshield/agent/`: finite-vocabulary sanitizer, read-only tools, providers,
+  strict verification, bounded workflow, conservative policy and safe cache.
 - `tests/unit/`: configuration/schema validation.
 - `tests/integration/`: installed CLI, Git diagnostics, failure and no-write checks.
 - `docs/architecture.md`: boundaries and deferred work.
 
 The CLI uses standard-library `argparse`; Pydantic validates contracts, `regex`
 provides matching timeouts, and pytest runs tests. Direct dependencies are pinned
-in `pyproject.toml`. No frontend,
-server, database, provider SDK, or runtime network dependency is included.
+in `pyproject.toml`. The optional `gemini` extra adds the official `google-genai`
+SDK and `python-dotenv`. The base install remains offline and has no provider SDK.
 
 Do not commit real credentials. `.env` and local caches are ignored; only the blank
 `.env.example` is intended for version control. Schemas reject unknown fields but
 cannot prove arbitrary text is sanitized: later detection/reporting must enforce
-redaction before constructing findings. AI advice, remediation, and credential
-rotation are not implemented. No security guarantee is made by this foundation.
+redaction before constructing findings. Verification is advisory; remediation and
+credential rotation are not implemented. No security guarantee is made.
 
 Detection is heuristic, not a complete language parser. Split/encoded/dynamically
 assembled secrets, unfamiliar formats, and complex multiline literals may be
@@ -132,4 +203,10 @@ missed. Unsupported encodings and ambiguous/racing diffs fail closed. IDs depend
 on rule/path/line/column and can change when code moves. Skips and configured
 exemptions reduce coverage; exit 0 never guarantees that a repository is secure.
 Previously committed history is not scanned. Scan limits count both sides of
-changed files to bound diff generation. Phase 2 requires a separate go-ahead.
+changed files to bound diff generation. Sanitized structural context omits
+semantic details, so verification can be uncertain or incorrect. The SDK path is
+tested with an intercepted HTTP transport; account access, model availability,
+actual billing, and end-to-end live API connectivity are not tested automatically.
+The verification deadline gates attempts and rejects late responses; SDK I/O
+timeouts are not a hard process-cancellation mechanism.
+Phase 3 requires a separate go-ahead.

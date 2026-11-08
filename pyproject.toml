@@ -8,10 +8,11 @@ version = "0.1.0"
 description = "Local-first offline credential detection CLI"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["pydantic==2.12.4", "regex==2025.11.3"]
+dependencies = ["pydantic==2.12.5", "regex==2025.11.3"]
 
 [project.optional-dependencies]
 dev = ["pytest==9.0.1"]
+gemini = ["google-genai==2.34.0", "python-dotenv==1.2.4"]
 
 [project.scripts]
 codeshield = "codeshield.cli:main"

@@ -1,8 +1,20 @@
 """Synthetic repositories only; never stage or commit the actual project."""
 
 import subprocess
+import socket
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def offline_provider_environment(monkeypatch):
+    for name in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "CI", "GITHUB_ACTIONS", "GITLAB_CI", "TF_BUILD"):
+        monkeypatch.delenv(name, raising=False)
+
+    def deny_network(*args, **kwargs):
+        raise AssertionError("Real network access is forbidden in tests.")
+
+    monkeypatch.setattr(socket.socket, "connect", deny_network)
 
 
 @pytest.fixture

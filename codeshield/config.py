@@ -32,7 +32,7 @@ class DetectionPattern(Contract):
 
 
 class Config(Contract):
-    provider: Provider = Provider.RULES
+    provider: Provider = Provider.MOCK
     blocking_severity: Severity = Severity.HIGH
     max_file_bytes: int = Field(default=1_048_576, gt=0, strict=True)
     max_scan_bytes: int = Field(default=10_485_760, gt=0, strict=True)
@@ -44,6 +44,13 @@ class Config(Contract):
     entropy_min_length: int = Field(default=20, ge=8, le=4096, strict=True)
     min_secret_length: int = Field(default=8, ge=4, le=4096, strict=True)
     patterns: tuple[DetectionPattern, ...] = Field(default=(), max_length=32)
+    gemini_model: str = Field(default="gemini-3.5-flash-lite", pattern=r"^gemini-[a-z0-9.-]{1,80}$")
+    verification_timeout_seconds: int = Field(default=60, ge=1, le=300, strict=True)
+    api_timeout_seconds: int = Field(default=10, ge=1, le=30, strict=True)
+    max_api_calls: int = Field(default=5, ge=0, le=100, strict=True)
+    api_max_retries: int = Field(default=2, ge=0, le=3, strict=True)
+    api_backoff_seconds: float = Field(default=1, ge=0, le=5, allow_inf_nan=False)
+    verification_cache_ttl_seconds: int = Field(default=86400, ge=0, le=604800, strict=True)
     exclude_dirs: tuple[str, ...] = (
         ".git", ".venv", "node_modules", "vendor", "dist", "build"
     )

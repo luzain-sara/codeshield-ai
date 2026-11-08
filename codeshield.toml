@@ -1,5 +1,5 @@
-# Offline Phase 1 detector defaults; provider keys never belong in this file.
-provider = "rules"
+# Offline mock verification by default; provider keys never belong in this file.
+provider = "mock"
 blocking_severity = "high"
 max_file_bytes = 1048576
 max_scan_bytes = 10485760
@@ -10,6 +10,13 @@ max_findings = 1000
 min_secret_length = 8
 entropy_min_length = 20
 entropy_threshold = 3.5
+gemini_model = "gemini-3.5-flash-lite"
+verification_timeout_seconds = 60
+api_timeout_seconds = 10
+max_api_calls = 5
+api_max_retries = 2
+api_backoff_seconds = 1
+verification_cache_ttl_seconds = 86400
 exclude_dirs = [".git", ".venv", "node_modules", "vendor", "dist", "build"]
 
 # Optional additional timed regex rule. A nonempty named 'secret' group is required.

@@ -79,7 +79,7 @@ def test_unimplemented_commands_fail_closed_and_do_not_write(repo, args):
     before = set(repo.rglob("*"))
     result = cli(repo, *args)
     assert result.returncode == 3
-    assert "not implemented in Phase 1" in result.stderr
+    assert "not implemented in Phase 2" in result.stderr
     assert set(repo.rglob("*")) == before
 
 
@@ -100,11 +100,11 @@ def test_invalid_invocations(repo, args):
     assert cli(repo, *args).returncode == 2
 
 
-@pytest.mark.parametrize("provider", ["gemini", "mock"])
+@pytest.mark.parametrize("provider", ["gemini"])
 def test_unavailable_providers_are_explicit(repo, provider):
     result = cli(repo, "doctor", "--provider", provider)
     assert result.returncode == 2
-    assert "not implemented" in result.stderr
+    assert "credentials" in result.stderr or "gemini extra" in result.stderr
 
 
 def test_missing_git_is_failure(monkeypatch, capsys, tmp_path):

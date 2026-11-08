@@ -43,6 +43,47 @@ class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
 
 
+class Classification(StrEnum):
+    LIKELY_SECRET = "likely_secret"
+    UNCERTAIN = "uncertain"
+    FALSE_POSITIVE = "false_positive"
+
+
+class DecisionReason(StrEnum):
+    CREDENTIAL_CONTEXT = "credential_context"
+    PUBLIC_EXAMPLE = "public_example"
+    INSUFFICIENT_CONTEXT = "insufficient_context"
+
+
+class Advice(StrEnum):
+    REVIEW_AND_ROTATE = "review_and_rotate"
+    MANUAL_REVIEW = "manual_review"
+    REVIEW_FALSE_POSITIVE = "review_false_positive"
+
+
+class Decision(Contract):
+    classification: Classification
+    reason: DecisionReason
+    recommendation: Advice
+
+
+class Verification(Contract):
+    decision: Decision
+    requested_provider: Provider
+    source: Provider
+    status: str = Field(pattern=r"^(ok|provider_error|invalid_response|budget_exhausted)$")
+    cached: bool = False
+    # All classifications remain advisory; no provider can authorize Phase 3 work.
+    fix_allowed: bool = Field(default=False, frozen=True)
+    states: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def deny_fixes(self) -> "Verification":
+        if self.fix_allowed:
+            raise ValueError("Fixes are unavailable in Phase 2")
+        return self
+
+
 class Finding(Contract):
     """Safe metadata only; no raw match, credential, or source-content field."""
 
@@ -57,6 +98,7 @@ class Finding(Contract):
     redacted_sample: str
     recommendation: str
     evidence: tuple[str, ...] = ()
+    verification: Verification | None = None
 
 
 class SkippedFile(Contract):
@@ -83,6 +125,7 @@ class ScanResult(Contract):
     finished_at: datetime
     tool_version: str
     provider: Provider
+    verification_model: str | None = Field(default=None, pattern=r"^gemini-[a-z0-9.-]{1,80}$")
     findings: tuple[Finding, ...] = ()
     summary: Summary = Field(default_factory=Summary)
     validation_status: ValidationStatus = ValidationStatus.NOT_RUN

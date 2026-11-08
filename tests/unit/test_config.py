@@ -8,7 +8,7 @@ from codeshield.models import Provider
 
 def test_defaults_are_offline(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    assert load_config().provider == Provider.RULES
+    assert load_config().provider == Provider.MOCK
     assert not list(tmp_path.iterdir())
 
 
