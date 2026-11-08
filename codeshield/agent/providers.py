@@ -43,6 +43,8 @@ def in_ci() -> bool:
 
 
 def require_live_opt_in(enabled: bool):
+    if os.environ.get("CODESHIELD_AUTOMATED") == "1":
+        raise ConfigError("Live Gemini verification is disabled in automated integrations.")
     if not enabled:
         raise ConfigError("Gemini requires --provider gemini --allow-live; no provider call made.")
     if in_ci():

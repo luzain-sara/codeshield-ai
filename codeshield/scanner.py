@@ -20,6 +20,8 @@ from codeshield.detectors.patterns import ASSIGNMENT, Candidate, Detector, safe_
 from typing import Callable
 from codeshield.errors import ScanError
 from codeshield.git_diff import Git, parse_changes, staged_additions, valid_path
+from codeshield.git_diff import ref_snapshot, ref_changes, ref_additions
+from codeshield.config import ConfigError
 from codeshield.models import (Finding, Provider, ScanResult, ScanScope, Severity,
                                SkippedFile, Summary, ValidationStatus)
 
@@ -71,7 +73,10 @@ def contained_file(root: Path, relative: str) -> Path | None:
 
 def scan(config: Config, *, path: Path | None = None, cwd: Path | None = None,
          live_enabled: bool = False,
+         base_ref: str | None = None, head_ref: str | None = None, merge_base: bool = False,
          _on_finding: Callable[[Finding, str, bytes, Candidate], None] | None = None) -> ScanResult:
+    if bool(base_ref) != bool(head_ref) or (path is not None and base_ref is not None) or (merge_base and base_ref is None):
+        raise ConfigError("Supply paired refs, optionally --merge-base, without a working-tree path.")
     if config.provider == Provider.GEMINI:
         require_live_opt_in(live_enabled)
     started = datetime.now(timezone.utc)
@@ -92,7 +97,7 @@ def scan(config: Config, *, path: Path | None = None, cwd: Path | None = None,
     git = Git(requested if requested and not requested_is_file else (requested.parent if requested else cwd), config)
     if requested and not requested.is_relative_to(git.root):
         raise ScanError("Scan path is outside the repository.")
-    if git.run("ls-files", "--unmerged", "-z"):
+    if base_ref is None and git.run("ls-files", "--unmerged", "-z"):
         raise ScanError("Unmerged index; resolve conflicts before scanning.")
     detector = Detector(config)
     findings = []
@@ -153,9 +158,14 @@ def scan(config: Config, *, path: Path | None = None, cwd: Path | None = None,
             window = "\n".join(cleaned_lines[max(0, number - 2):number + 1])[:2048]
             contexts[finding.finding_id] = sanitize(relative, window, candidate.rule_id)
 
+    base_oid = head_oid = None
     if requested is None:
-        metadata = git.staged_metadata()
-        changes = parse_changes(metadata)
+        if base_ref is not None:
+            base_oid, head_oid = ref_snapshot(git, base_ref, head_ref, merge_base)
+            changes = ref_changes(git, base_oid, head_oid)
+        else:
+            metadata = git.staged_metadata()
+            changes = parse_changes(metadata)
         if len(changes) > config.max_files:
             raise ScanError("File count limit exceeded; scan incomplete.")
         for change in changes:
@@ -179,9 +189,9 @@ def scan(config: Config, *, path: Path | None = None, cwd: Path | None = None,
                 skip(change.path, "binary")
                 continue
             # Cap both sides before allowing Git to generate a patch.
-            additions = staged_additions(git, change, data)
+            additions = ref_additions(git, change, data) if base_ref is not None else staged_additions(git, change, data)
             inspect(change.path, data, additions)
-        if metadata != git.staged_metadata():
+        if base_ref is None and metadata != git.staged_metadata():
             raise ScanError("Index changed during scanning; rerun the scan.")
     else:
         raw = git.run("ls-files", "--cached", "--others", "--exclude-standard", "-z")
@@ -231,7 +241,8 @@ def scan(config: Config, *, path: Path | None = None, cwd: Path | None = None,
     verified = verify_findings(tuple(findings), contexts, config, git.root, live_enabled=live_enabled)
     failed = any(item.verification.status != "ok" for item in verified)
     return ScanResult(
-        run_id=uuid4(), scan_scope=ScanScope.STAGED if requested is None else ScanScope.WORKTREE,
+        run_id=uuid4(), scan_scope=ScanScope.REFS if base_ref is not None else ScanScope.STAGED if requested is None else ScanScope.WORKTREE,
+        base_commit=base_oid, head_commit=head_oid, comparison="merge_base" if merge_base else "endpoints" if base_ref is not None else None,
         started_at=started, finished_at=datetime.now(timezone.utc), tool_version=__version__,
         provider=config.provider, verification_model=config.gemini_model if config.provider == Provider.GEMINI else None,
         findings=verified, summary=Summary(total=len(findings), blocking=blocking),

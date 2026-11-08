@@ -197,3 +197,74 @@ def staged_additions(git: Git, change: Change, data: bytes) -> frozenset[int]:
     if change.old_oid != change.oid and not added and b"@@" not in patch:
         raise ScanError("Git did not produce a verifiable text diff.")
     return frozenset(added)
+
+
+def resolve_commit(git: Git, ref: str) -> str:
+    """Resolve once; never pass user ref expressions to a diff or log diagnostics."""
+    if not ref or len(ref) > 1024 or any(ord(c) < 32 for c in ref):
+        raise ScanError("Invalid Git ref; no comparison performed.")
+    try:
+        oid = git.run("rev-parse", "--verify", "--end-of-options", ref + "^{commit}", limit=256).strip().decode("ascii")
+    except (UnicodeError, ScanError):
+        raise ScanError("Git ref is unavailable or is not a commit; fetch the required history explicitly.") from None
+    if not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", oid):
+        raise ScanError("Git did not resolve a unique commit.")
+    return oid
+
+
+def ref_snapshot(git: Git, base: str, head: str, merge_base: bool = False):
+    head_oid = resolve_commit(git, head)
+    if base == "EMPTY":
+        if merge_base:
+            raise ScanError("EMPTY cannot be used for a merge-base comparison.")
+        return "EMPTY", head_oid
+    base_oid = resolve_commit(git, base)
+    if merge_base:
+        bases = git.run("merge-base", "--all", base_oid, head_oid, limit=512).splitlines()
+        if len(bases) != 1 or not re.fullmatch(rb"(?:[0-9a-f]{40}|[0-9a-f]{64})", bases[0]):
+            raise ScanError("Comparison requires one merge base; missing or ambiguous history fails closed.")
+        base_oid = bases[0].decode("ascii")
+    return base_oid, head_oid
+
+
+def ref_changes(git: Git, base_oid: str, head_oid: str) -> list[Change]:
+    if base_oid != "EMPTY":
+        return parse_changes(git.run(
+            "diff", "--raw", "-z", "--no-abbrev", "--no-ext-diff", "--no-textconv",
+            "--find-renames=50%", "--diff-filter=ACMRT", "--no-relative", base_oid, head_oid, "--",
+        ))
+    # Enumerate the target tree without creating an empty-tree object or touching the index.
+    output = git.run("ls-tree", "--full-tree", "-r", "-z", head_oid)
+    changes = []
+    try:
+        for record in output.split(b"\0"):
+            if not record:
+                continue
+            header, path_bytes = record.split(b"\t", 1)
+            mode, kind, oid = header.decode("ascii").split()
+            if kind not in ("blob", "commit") or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", oid):
+                raise ValueError
+            path = valid_path(path_bytes.decode("utf-8"))
+            changes.append(Change("000000", mode, "0" * len(oid), oid, path, path))
+    except (ValueError, UnicodeError):
+        raise ScanError("Invalid Git tree metadata.") from None
+    return changes
+
+
+def ref_additions(git: Git, change: Change, data: bytes) -> frozenset[int]:
+    if set(change.old_oid) == {"0"}:
+        return frozenset(range(1, len(data.split(b"\n")) + (0 if data.endswith(b"\n") else 1))) if data else frozenset()
+    if change.old_oid == change.oid:
+        return frozenset()
+    patch = git.run(
+        "diff", "--unified=0", "--inter-hunk-context=0", "--diff-algorithm=myers",
+        "--no-ext-diff", "--no-textconv", "--no-color", "--text", change.old_oid, change.oid, "--",
+        limit=git.config.max_scan_bytes * 3 + 65536,
+    )
+    additions = parse_added_lines(patch)
+    lines = data.split(b"\n")
+    if any(n < 1 or n > len(lines) or lines[n - 1] != value for n, value in additions.items()):
+        raise ScanError("Git comparison does not match the selected commit blob.")
+    if not additions and b"@@" not in patch:
+        raise ScanError("Git did not produce a verifiable ref comparison.")
+    return frozenset(additions)

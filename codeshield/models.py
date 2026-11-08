@@ -3,6 +3,7 @@
 from datetime import datetime
 from enum import IntEnum, StrEnum
 from uuid import UUID
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -131,6 +132,9 @@ class ScanResult(Contract):
     validation_status: ValidationStatus = ValidationStatus.NOT_RUN
     files_scanned: int = Field(default=0, ge=0, strict=True)
     skipped_files: tuple[SkippedFile, ...] = ()
+    base_commit: str | None = Field(default=None, pattern=r"^(?:EMPTY|[0-9a-f]{40}|[0-9a-f]{64})$")
+    head_commit: str | None = Field(default=None, pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+    comparison: Literal["endpoints", "merge_base"] | None = None
 
     @model_validator(mode="after")
     def check_consistency(self) -> "ScanResult":

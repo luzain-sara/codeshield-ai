@@ -74,17 +74,19 @@ def doctor(config_path: Path | None, provider: str | None) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="codeshield", description="CodeShield-AI: detection, bounded verification and approved remediation (Phase 3)."
+        prog="codeshield", description="CodeShield-AI: local security scanning and developer gates (Phase 4)."
     )
     parser.add_argument("--version", action="version", version=f"codeshield {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
+    hook = commands.add_parser("hook", help="Install or remove the managed offline pre-commit gate")
+    hook.add_argument("action", choices=("install", "uninstall"))
     for name in ("doctor", "scan", "explain", "fix", "init"):
         command = commands.add_parser(name, help=(
             "Check foundation setup" if name == "doctor" else
             "Scan staged additions (default) or an explicit worktree path" if name == "scan" else
             "Explain a current staged finding without storing secrets" if name == "explain" else
             "Preview or approve a conservative working-tree fix" if name == "fix" else
-            "Reserved; unavailable in Phase 3"
+            "Reserved; unavailable in Phase 4"
         ))
         command.add_argument("--config", type=Path, help="Explicit TOML configuration file")
         command.add_argument("--provider", choices=[p.value for p in Provider])
@@ -96,6 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
             scope.add_argument("--path", type=Path)
             scope.add_argument("--base-ref")
             command.add_argument("--head-ref")
+            command.add_argument("--merge-base", action="store_true", help="Compare the unique merge base against the head commit")
             command.add_argument("--format", choices=("human", "json"), default="human")
             command.add_argument("--output", type=Path)
             command.add_argument("--allow-live", action="store_true", help="Explicitly allow sanitized Gemini verification outside CI")
@@ -112,6 +115,14 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "hook":
+        from codeshield.integrations import manage_hook
+        try:
+            print(manage_hook(args.action, Path.cwd()))
+            return ExitCode.SUCCESS
+        except (ScanError, OSError, ValueError):
+            print("Hook setup failed safely; existing or shared hooks were preserved. See the integration guide.", file=sys.stderr)
+            return ExitCode.VALIDATION_FAILURE
     if args.command == "doctor":
         return doctor(args.config, args.provider)
     if args.command == "fix" and args.yes and not args.apply:
@@ -160,10 +171,9 @@ def main(argv: list[str] | None = None) -> int:
             return ExitCode.VALIDATION_FAILURE
     if args.command == "scan" and bool(args.base_ref) != bool(args.head_ref):
         parser.error("--base-ref and --head-ref must be supplied together")
+    if args.command == "scan" and args.merge_base and not args.base_ref:
+        parser.error("--merge-base requires --base-ref and --head-ref")
     if args.command == "scan":
-        if args.base_ref:
-            print("Git-ref scanning is deferred to Phase 4; no scan performed.", file=sys.stderr)
-            return ExitCode.VALIDATION_FAILURE
         try:
             config = load_config(args.config)
             selected = Provider(args.provider) if args.provider else config.provider
@@ -172,7 +182,8 @@ def main(argv: list[str] | None = None) -> int:
             config = config.model_copy(update={"provider": selected})
             if selected == Provider.GEMINI and args.allow_live:
                 print("Gemini opt-in: only sanitized structural context may be sent to Google; no raw source or credential values.", file=sys.stderr)
-            result = scan(config, path=args.path, live_enabled=args.allow_live)
+            result = scan(config, path=args.path, live_enabled=args.allow_live,
+                          base_ref=args.base_ref, head_ref=args.head_ref, merge_base=args.merge_base)
             report = render(result, args.format)
             if args.output:
                 write_report(args.output, report)
@@ -191,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
             print("Scan or report validation failed; no complete result is available.", file=sys.stderr)
             return ExitCode.VALIDATION_FAILURE
     print(
-        f"{args.command} is not implemented in Phase 3. No scan or file changes performed.",
+        f"{args.command} is not implemented in Phase 4. No scan or file changes performed.",
         file=sys.stderr,
     )
     return ExitCode.VALIDATION_FAILURE

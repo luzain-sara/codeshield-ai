@@ -78,7 +78,7 @@ def test_unimplemented_commands_fail_closed_and_do_not_write(repo, args):
     before = set(repo.rglob("*"))
     result = cli(repo, *args)
     assert result.returncode == 3
-    assert "not implemented in Phase 3" in result.stderr
+    assert "not implemented in Phase 4" in result.stderr
     assert set(repo.rglob("*")) == before
 
 

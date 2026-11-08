@@ -11,11 +11,14 @@ requires-python = ">=3.12"
 dependencies = ["pydantic==2.12.5", "regex==2025.11.3", "tree-sitter==0.26.0", "tree-sitter-javascript==0.25.0"]
 
 [project.optional-dependencies]
-dev = ["pytest==9.0.1"]
+dev = ["pytest==9.0.1", "PyYAML==6.0.3"]
 gemini = ["google-genai==2.34.0", "python-dotenv==1.2.4"]
 
 [project.scripts]
 codeshield = "codeshield.cli:main"
+codeshield-hook = "codeshield.integrations:hook_main"
+codeshield-ci = "codeshield.integrations:ci_main"
+codeshield-docker = "codeshield.integrations:docker_main"
 
 [tool.setuptools.packages.find]
 include = ["codeshield*"]

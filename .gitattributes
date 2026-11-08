@@ -1,0 +1,8 @@
+*.py text eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.lock text eol=lf
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+.pre-commit-hooks.yaml text eol=lf

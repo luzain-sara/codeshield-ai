@@ -1,8 +1,8 @@
 # Foundation contracts
 
-Phases 0–3 contain CLI, configuration, offline detection, Git diff selection,
-reporting, bounded verification and approved remediation. Hooks and CI security
-integration remain unimplemented. Phase 4 has not begun.
+Phases 0 through 4 contain CLI, configuration, offline detection, Git snapshot selection,
+reporting, bounded verification, approved remediation and offline developer gates.
+Phase 5 has not begun.
 
 Configuration flows from a local TOML file into immutable, validated Pydantic
 models. Unknown fields fail validation. CLI errors never echo parser/schema
@@ -132,3 +132,17 @@ and fresh working-tree/index scans. Handled failures roll back without disk
 backups; unsafe/incomplete rollback fails closed. Apply never stages changes and
 returns blocking until intentional restaging. See [remediation.md](remediation.md)
 for supported syntax, environment consent, operational limits and failure states.
+
+## Phase 4 developer gates
+
+`git_diff.ref_snapshot` resolves commit IDs once, then compares immutable trees
+and blobs with external diff/textconv disabled. Endpoint and unique merge-base
+comparisons share detection and verification with staged scans. New-branch trees
+are enumerated without creating Git objects. Missing history fails closed.
+
+`integrations.py` supplies a managed native hook, pre-commit entry point, GitHub
+event adapter and scan-only Docker interface. All force mock verification under
+an automation guard that also rejects direct live-provider opt-in. They never
+invoke remediation or stage files. CI reports are exclusively created and
+contain only the existing sanitized schema or a fixed failure envelope. See
+[integrations.md](integrations.md) for history, installation and runtime limits.

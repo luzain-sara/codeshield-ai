@@ -1,12 +1,13 @@
 # CodeShield-AI
 
-Local-first Python credential security CLI. **Phases 0 through 3 are implemented.**
+Local-first Python credential security CLI. **Phases 0 through 4 are implemented.**
 Detect likely hardcoded credentials offline in Git-staged additions, or opt into
 a working-tree scan. Reports contain sanitized metadata and fully redacted samples.
 Verification defaults to a deterministic offline mock. Explicitly enabled Gemini
 verification receives only sanitized structural context. Conservative remediation
-requires a validated plan and developer approval. Pre-commit and CI integration
-are not implemented.
+requires a validated plan and developer approval. Offline pre-commit hooks,
+Git-ref comparisons, GitHub Actions gates and Docker packaging are available.
+See [developer integrations](docs/integrations.md) for installation and limits.
 
 ## Windows PowerShell setup
 
@@ -15,7 +16,8 @@ executables directly, so PowerShell activation policy does not need to change.
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e '.[dev]'
+.\.venv\Scripts\python.exe -m pip install --require-hashes --only-binary=:all: -r requirements-dev.lock
+.\.venv\Scripts\python.exe -m pip install --no-build-isolation --no-deps -e .
 .\.venv\Scripts\codeshield.exe --help
 .\.venv\Scripts\codeshield.exe --version
 .\.venv\Scripts\codeshield.exe doctor
@@ -163,8 +165,8 @@ The output destination must be new, writable, outside `.git`, with no linked par
 
 `explain` reconstructs a current staged finding without persisting secrets. `fix`
 previews or applies an approved deterministic patch. `init` remains an explicit
-placeholder returning **3**. Git-ref scan arguments must be paired, but ref comparison itself
-is deferred to Phase 4. This release does not interpret a checkout index as a PR diff.
+placeholder returning **3**. Git-ref arguments must be paired; endpoint and PR merge-base
+comparisons read immutable commit snapshots. See [integrations](docs/integrations.md).
 
 | Code | Contract |
 | --- | --- |
@@ -238,7 +240,7 @@ assembled secrets, unfamiliar formats, and complex multiline literals may be
 missed. Unsupported encodings and ambiguous/racing diffs fail closed. IDs depend
 on rule/path/line/column and can change when code moves. Skips and configured
 exemptions reduce coverage; exit 0 never guarantees that a repository is secure.
-Previously committed history is not scanned. Scan limits count both sides of
+Full commit history and intermediate commits are not scanned. Scan limits count both sides of
 changed files to bound diff generation. Sanitized structural context omits
 semantic details, so verification can be uncertain or incorrect. The SDK path is
 tested with an intercepted HTTP transport; account access, model availability,
@@ -246,4 +248,4 @@ actual billing, and end-to-end live API connectivity are not tested automaticall
 The verification deadline gates attempts and rejects late responses; SDK I/O
 timeouts are not a hard process-cancellation mechanism.
 Remediation proves the supported transformation and syntax, not full runtime
-behavior or deployment configuration. Phase 4 requires a separate go-ahead.
+behavior or deployment configuration. Phase 5 has not been started.

@@ -248,12 +248,12 @@ def test_default_scope_and_blocking_threshold(git_repo):
     assert json.loads(result.stdout)["summary"] == {"total": 1, "blocking": 0}
 
 
-def test_empty_scan_and_git_ref_mode_deferral(git_repo):
+def test_empty_scan_and_missing_git_history(git_repo):
     root, git, write = git_repo
     assert run_cli(root, "scan").returncode == 0
     result = run_cli(root, "scan", "--base-ref", "main", "--head-ref", "HEAD")
     assert result.returncode == 3
-    assert "Phase 4" in result.stderr
+    assert "fetch the required history" in result.stderr
 
 
 @pytest.mark.parametrize("provider", ["gemini"])
