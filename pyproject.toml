@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codeshield"
+version = "0.1.0"
+description = "Local-first credential security CLI (Phase 0 foundation)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["pydantic==2.12.4"]
+
+[project.optional-dependencies]
+dev = ["pytest==9.0.1"]
+
+[project.scripts]
+codeshield = "codeshield.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["codeshield*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
