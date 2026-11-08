@@ -73,14 +73,14 @@ class Verification(Contract):
     source: Provider
     status: str = Field(pattern=r"^(ok|provider_error|invalid_response|budget_exhausted)$")
     cached: bool = False
-    # All classifications remain advisory; no provider can authorize Phase 3 work.
+    # Provider advice stays separate from deterministic remediation approval.
     fix_allowed: bool = Field(default=False, frozen=True)
     states: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def deny_fixes(self) -> "Verification":
         if self.fix_allowed:
-            raise ValueError("Fixes are unavailable in Phase 2")
+            raise ValueError("Provider verification cannot authorize writes")
         return self
 
 

@@ -1,8 +1,8 @@
 # Foundation contracts
 
-Phases 0–2 contain CLI, configuration, public result models, offline detection,
-Git diff selection, reporting and bounded context verification. No patch engine,
-hook, or CI security integration exists. Phase 3 has not begun.
+Phases 0–3 contain CLI, configuration, offline detection, Git diff selection,
+reporting, bounded verification and approved remediation. Hooks and CI security
+integration remain unimplemented. Phase 4 has not begun.
 
 Configuration flows from a local TOML file into immutable, validated Pydantic
 models. Unknown fields fail validation. CLI errors never echo parser/schema
@@ -61,8 +61,7 @@ Limitations: UTF-8 text only; a lexical detector cannot prove full language sema
 or detect every split/encoded secret. Filesystem link checks cannot provide a
 transactional snapshot against a hostile process concurrently replacing directories;
 staged scans avoid this by reading Git blobs. Skip reasons and selected scope are
-visible. No claim of universal detection or commit safety is made. All
-remediation/integration work remains unimplemented.
+visible. No claim of universal detection or commit safety is made.
 
 ## Phase 2 verification boundary
 
@@ -103,8 +102,33 @@ Phase 1 rule/path/line/column finding IDs, detection confidence/severity and blo
 counts are preserved. `Finding.verification` adds truthful source/status/cache/state
 metadata; a false-positive assessment is still advisory. Failed requested Gemini
 verification has rules provenance and causes CLI exit 3, with safe uncertainty in
-the report. Phase 3 planning, patch validation and apply tools remain unavailable.
+the report. Verification itself never authorizes remediation; local plan
+eligibility and explicit apply approval are separate boundaries.
 
 The optional provider tests use Google's real SDK with an HTTP MockTransport and
 synthetic keys; socket connections are blocked in tests. Live access, quota, model
 availability and billing remain environment/account-dependent and are not probed.
+
+## Phase 3 local planning boundary
+
+`agent.workflow.plan_fix` invokes the fixed local planner, reconstructing current
+staged findings through an internal transient callback. Raw bytes stay inside the
+trusted local scanner/planner; the callback is not a provider tool or persistence
+interface. No model receives a Plan, raw candidate, source, secret hash or patch.
+Provider `fix_allowed` remains false. Six fixed planning states stop at approval.
+
+`remediation/framework.py` reads guarded metadata and rejects client/unknown
+runtimes. `planner.py` proves a single literal assignment using Python AST or
+Tree-sitter, creates minimal byte-range edits, and syntax-checks the candidate.
+Its private frozen Plan retains original/proposed bytes only in memory. Previews
+contain structural redaction, safe location, approved names and auxiliary changes.
+The Phase 2 scan chain remains read-only and does not create or apply plans.
+
+`snapshot.py` rejects links, hard links, non-regular, oversized and cross-filesystem
+files. `security.py` handles permissions/Windows DACLs. `patcher.py` revalidates
+the reviewed plan, locks, checks guards/index/HEAD before each write, uses ignored
+private temporaries and atomic replacement, then runs allowlisted syntax checks
+and fresh working-tree/index scans. Handled failures roll back without disk
+backups; unsafe/incomplete rollback fails closed. Apply never stages changes and
+returns blocking until intentional restaging. See [remediation.md](remediation.md)
+for supported syntax, environment consent, operational limits and failure states.

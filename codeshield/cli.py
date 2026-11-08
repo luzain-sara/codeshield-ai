@@ -13,6 +13,9 @@ from codeshield.errors import ScanError
 from codeshield.reporting import render, write_report
 from codeshield.scanner import scan
 from codeshield.agent.providers import check_sdk_available, load_api_key
+from codeshield.agent.workflow import plan_fix
+from codeshield.remediation.patcher import apply_plan
+import re
 
 
 def doctor(config_path: Path | None, provider: str | None) -> int:
@@ -71,7 +74,7 @@ def doctor(config_path: Path | None, provider: str | None) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="codeshield", description="CodeShield-AI: credential detection and bounded verification (Phase 2)."
+        prog="codeshield", description="CodeShield-AI: detection, bounded verification and approved remediation (Phase 3)."
     )
     parser.add_argument("--version", action="version", version=f"codeshield {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -79,7 +82,9 @@ def build_parser() -> argparse.ArgumentParser:
         command = commands.add_parser(name, help=(
             "Check foundation setup" if name == "doctor" else
             "Scan staged additions (default) or an explicit worktree path" if name == "scan" else
-            "Reserved; unavailable in Phase 2"
+            "Explain a current staged finding without storing secrets" if name == "explain" else
+            "Preview or approve a conservative working-tree fix" if name == "fix" else
+            "Reserved; unavailable in Phase 3"
         ))
         command.add_argument("--config", type=Path, help="Explicit TOML configuration file")
         command.add_argument("--provider", choices=[p.value for p in Provider])
@@ -99,6 +104,8 @@ def build_parser() -> argparse.ArgumentParser:
             mode.add_argument("--dry-run", action="store_true")
             mode.add_argument("--apply", action="store_true")
             command.add_argument("--yes", action="store_true")
+            command.add_argument("--env-name", help="Approve a destination environment variable name")
+            command.add_argument("--store-secret", action="store_true", help="Explicitly approve storing the value in an ignored private .env during apply")
     return parser
 
 
@@ -107,6 +114,50 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "doctor":
         return doctor(args.config, args.provider)
+    if args.command == "fix" and args.yes and not args.apply:
+        parser.error("--yes requires --apply")
+    if args.command in ("fix", "explain"):
+        try:
+            config = load_config(args.config)
+            config = config.model_copy(update={"provider": Provider(args.provider) if args.provider else config.provider})
+            if args.command == "explain":
+                if not re.fullmatch("[0-9a-f]{24}", args.finding_id):
+                    raise ConfigError("Finding ID must be the 24-character ID from a fresh staged scan.")
+                if config.provider == Provider.GEMINI:
+                    raise ConfigError("Explain uses offline reconstruction; select --provider mock or rules.")
+                result = scan(config)
+                found = [f for f in result.findings if f.finding_id == args.finding_id]
+                if len(found) != 1:
+                    raise ScanError("Finding is absent or stale; rerun the staged scan.")
+                print(found[0].model_dump_json(indent=2))
+                return ExitCode.SUCCESS
+            plan = plan_fix(args.finding_id, config, cwd=Path.cwd(), env_name=args.env_name, store_secret=args.store_secret)
+            sys.stdout.write(plan.preview())
+            if not args.apply:
+                print("Dry run: no files changed.")
+                return ExitCode.SUCCESS
+            approved = args.yes
+            if not approved:
+                if not sys.stdin.isatty():
+                    raise ConfigError("Interactive approval is required; use --apply --yes only for trusted local automation.")
+                try:
+                    approved = input("Apply exactly this plan? [y/N] ").strip().lower() in ("y", "yes")
+                except (EOFError, KeyboardInterrupt):
+                    approved = False
+            if not approved:
+                print("Approval declined; no files changed.")
+                return ExitCode.SUCCESS
+            sys.stdout.write(apply_plan(plan, approved=True))
+            return ExitCode.BLOCKING_FINDINGS  # The unchanged index must be restaged and checked.
+        except ConfigError as exc:
+            print(str(exc), file=sys.stderr)
+            return ExitCode.CONFIG_ERROR
+        except ScanError as exc:
+            print(str(exc), file=sys.stderr)
+            return ExitCode.VALIDATION_FAILURE
+        except (OSError, UnicodeError, ValueError, RecursionError, TimeoutError):
+            print("Remediation or explanation failed safely; review the repository and rerun a dry run.", file=sys.stderr)
+            return ExitCode.VALIDATION_FAILURE
     if args.command == "scan" and bool(args.base_ref) != bool(args.head_ref):
         parser.error("--base-ref and --head-ref must be supplied together")
     if args.command == "scan":
@@ -140,7 +191,7 @@ def main(argv: list[str] | None = None) -> int:
             print("Scan or report validation failed; no complete result is available.", file=sys.stderr)
             return ExitCode.VALIDATION_FAILURE
     print(
-        f"{args.command} is not implemented in Phase 2. No scan or file changes performed.",
+        f"{args.command} is not implemented in Phase 3. No scan or file changes performed.",
         file=sys.stderr,
     )
     return ExitCode.VALIDATION_FAILURE

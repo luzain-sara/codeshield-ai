@@ -39,3 +39,10 @@ def verify_findings(findings: tuple[Finding, ...], contexts: dict[str, SafeConte
     finally:
         provider.close()
     return tuple(updated)
+
+
+def plan_fix(finding_id: str, config: Config, *, cwd: Path | None = None,
+             env_name: str | None = None, store_secret: bool = False):
+    """Trusted, fixed Phase 3 chain; never exposed as an LLM function/tool."""
+    from codeshield.remediation.planner import plan_remediation
+    return plan_remediation(finding_id, config, cwd=cwd, env_name=env_name, store_secret=store_secret)

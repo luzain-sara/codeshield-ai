@@ -57,6 +57,16 @@ def test_multiple_values_same_line():
 
 
 @pytest.mark.parametrize("source", [
+    'const config = {apiKey: "' + VALUE + '"};',
+    'config = {"password": "' + VALUE + '"}',
+    'class Settings:\n    API_KEY = "' + VALUE + '"',
+])
+def test_nested_config_assignments_are_detected(source):
+    detector = Detector(Config())
+    assert any(detector.find(line, allow_bare=False) for line in code_lines(source, "a.py"))
+
+
+@pytest.mark.parametrize("source", [
     'API_KEY="YOUR_API_KEY"', 'password="dummy_password"', 'password="changeme"',
     'apiKey="<INSERT_KEY>"', 'apiKey="${API_KEY}"', 'apiKey=os.environ["API_KEY"]',
     'apiKey=os.getenv("API_KEY")', 'const apiKey=process.env.API_KEY;',

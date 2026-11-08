@@ -30,17 +30,20 @@ class Git:
         if time.monotonic() >= self.deadline:
             raise ScanError("Scan timed out; scan incomplete.")
 
-    def run(self, *args: str, limit: int | None = None) -> bytes:
+    def run(self, *args: str, limit: int | None = None, accepted_codes: tuple[int, ...] = (0,), input: bytes | None = None) -> bytes:
         self.check_deadline()
         limit = limit if limit is not None else self.config.max_scan_bytes
+        if input is not None and len(input) > 65536:
+            raise ScanError("Git input exceeds safe limits.")
         env = os.environ.copy()
         env.update(GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0")
         timed_out = threading.Event()
         try:
             with subprocess.Popen(
-                [self.executable, "--literal-pathspecs", "-c", "core.fsmonitor=false",
+                [self.executable, *([] if args and args[0] == "check-ignore" else ["--literal-pathspecs"]), "-c", "core.fsmonitor=false",
                  "-C", str(self.directory), *args],
                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env,
+                stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
             ) as process:
                 def expire():
                     timed_out.set()
@@ -54,6 +57,9 @@ class Git:
                 )
                 timer.start()
                 try:
+                    if input is not None:
+                        process.stdin.write(input)
+                        process.stdin.close()
                     data = process.stdout.read(limit + 1)
                     if len(data) > limit:
                         process.kill()
@@ -65,7 +71,7 @@ class Git:
                     raise ScanError("Git operation timed out; scan incomplete.")
                 if len(data) > limit:
                     raise ScanError("Git output exceeds scan limits; scan incomplete.")
-                if process.returncode:
+                if process.returncode not in accepted_codes:
                     raise ScanError("Git operation failed; verify the repository and index.")
                 return data
         except OSError:

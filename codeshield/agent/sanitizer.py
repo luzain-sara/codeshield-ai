@@ -27,7 +27,7 @@ def sanitize(path: str, code_context: str, rule_id: str) -> SafeContext:
     did not recognize. Model quality cannot weaken the local privacy boundary.
     """
     suffix = PurePosixPath(path).suffix.lower()
-    language = ({".py": "python", ".js": "javascript", ".jsx": "javascript",
+    language = ({".py": "python", ".js": "javascript", ".cjs": "javascript", ".mjs": "javascript", ".jsx": "javascript",
                  ".ts": "javascript", ".tsx": "javascript", ".json": "json",
                  ".yaml": "yaml", ".yml": "yaml"}.get(suffix, "unknown"))
     if PurePosixPath(path).name.lower().startswith(".env"):

@@ -1,3 +1,3 @@
-"""CodeShield detection and bounded context verification. No remediation."""
+"""CodeShield detection, bounded verification and developer-approved remediation."""
 
 __version__ = "0.1.0"

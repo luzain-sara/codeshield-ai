@@ -27,7 +27,7 @@ def code_lines(text: str, path: str) -> list[str]:
     Only a marker inside a comment suppresses the marked line.
     """
     python = path.lower().endswith(".py")
-    slash_comments = path.lower().endswith((".js", ".jsx", ".ts", ".tsx", ".json"))
+    slash_comments = path.lower().endswith((".js", ".cjs", ".mjs", ".jsx", ".ts", ".tsx", ".json"))
     quote = ""
     block = False
     docstring = False

@@ -4,4 +4,4 @@ from codeshield.models import Decision
 
 
 def allow_fix(decision: Decision) -> bool:
-    return False  # Phase 3 is deliberately unavailable, including for likely secrets.
+    return False  # Provider advice alone never authorizes a plan or a working-tree write.

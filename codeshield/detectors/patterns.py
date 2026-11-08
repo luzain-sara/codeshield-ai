@@ -1,6 +1,7 @@
 """Bounded regex/entropy detection. Never expose Candidate outside the scan."""
 
 from dataclasses import dataclass, field
+import time
 
 import regex
 
@@ -73,8 +74,19 @@ class Detector:
                         raise ScanError("Detection pattern returned an empty candidate.")
                     add(*match.span("secret"), value, "custom-" + definition.rule_id,
                         definition.severity, 0.9, "Configured credential pattern")
-            for match in ASSIGNMENT.finditer(line, timeout=TIMEOUT):
-                if not allow_bare and not match["quote"]:
+            cursor = 0
+            deadline = time.monotonic() + TIMEOUT
+            while cursor < len(line):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError
+                match = ASSIGNMENT.search(line, pos=cursor, timeout=remaining)
+                if match is None:
+                    break
+                cursor = match.end()
+                if not match["quote"] and (not allow_bare or match["bare"].startswith(("{", "["))):
+                    # Revisit nested config keys instead of consuming them as an outer bare expression.
+                    cursor = max(match.start("bare"), match.start() + 1)
                     continue
                 name = match["name"]
                 value = match["quoted"] if match["quote"] else match["bare"]

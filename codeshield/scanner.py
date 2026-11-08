@@ -16,7 +16,8 @@ from codeshield.agent.sanitizer import sanitize
 from codeshield.agent.workflow import verify_findings
 from codeshield.config import Config
 from codeshield.detectors.context import code_lines
-from codeshield.detectors.patterns import Detector, safe_path
+from codeshield.detectors.patterns import ASSIGNMENT, Candidate, Detector, safe_path
+from typing import Callable
 from codeshield.errors import ScanError
 from codeshield.git_diff import Git, parse_changes, staged_additions, valid_path
 from codeshield.models import (Finding, Provider, ScanResult, ScanScope, Severity,
@@ -24,8 +25,8 @@ from codeshield.models import (Finding, Provider, ScanResult, ScanScope, Severit
 
 PROTECTED = {".git", ".hg", ".svn", ".venv", ".codeshield", "venv", "__pycache__", "node_modules",
              "vendor", "dist", "build", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
-EXTENSIONS = {".py", ".js", ".jsx", ".ts", ".tsx", ".json", ".yaml", ".yml"}
-KEY_ONLY = re.compile(r'''["']?[A-Za-z_$][\w$.-]{0,100}["']?\s*[:=]\s*\(?\s*$''')
+EXTENSIONS = {".py", ".js", ".cjs", ".mjs", ".jsx", ".ts", ".tsx", ".json", ".yaml", ".yml"}
+KEY_ONLY = re.compile(r'''(?:(?:const|let|var)\s+)?["']?[A-Za-z_$][\w$.-]{0,100}["']?\s*(?::\s*(?:str|bytes|string)\s*)?[:=]\s*\(?\s*''')
 SEVERITY_ORDER = {Severity.LOW: 0, Severity.MEDIUM: 1, Severity.HIGH: 2, Severity.CRITICAL: 3}
 
 
@@ -69,7 +70,8 @@ def contained_file(root: Path, relative: str) -> Path | None:
 
 
 def scan(config: Config, *, path: Path | None = None, cwd: Path | None = None,
-         live_enabled: bool = False) -> ScanResult:
+         live_enabled: bool = False,
+         _on_finding: Callable[[Finding, str, bytes, Candidate], None] | None = None) -> ScanResult:
     if config.provider == Provider.GEMINI:
         require_live_opt_in(live_enabled)
     started = datetime.now(timezone.utc)
@@ -120,10 +122,11 @@ def scan(config: Config, *, path: Path | None = None, cwd: Path | None = None,
         cleaned_lines = code_lines(text, relative)
         for number, line in enumerate(cleaned_lines, 1):
             git.check_deadline()
-            context = prefix + line
-            offset = len(prefix)
+            own_assignment = bool(prefix and ASSIGNMENT.match(line.lstrip(), timeout=0.05))
+            context = line if own_assignment else prefix + line
+            offset = 0 if own_assignment else len(prefix)
             if line.strip():
-                prefix = line.rstrip().removesuffix("(") + " " if KEY_ONLY.search(line) else ""
+                prefix = line.rstrip().removesuffix("(") + " " if KEY_ONLY.fullmatch(line.strip()) else ""
             if additions is not None and number not in additions:
                 continue
             for candidate in detector.find(context, allow_bare=allow_bare):
@@ -145,6 +148,8 @@ def scan(config: Config, *, path: Path | None = None, cwd: Path | None = None,
                 recommendation="Remove the hardcoded value. Rotate it if previously exposed; review and rescan staged changes.",
             )
             findings.append(finding)
+            if _on_finding is not None:
+                _on_finding(finding, relative, data, candidate)
             window = "\n".join(cleaned_lines[max(0, number - 2):number + 1])[:2048]
             contexts[finding.finding_id] = sanitize(relative, window, candidate.rule_id)
 

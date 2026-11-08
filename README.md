@@ -1,11 +1,12 @@
 # CodeShield-AI
 
-Local-first Python credential security CLI. **Phases 0 through 2 are implemented.**
+Local-first Python credential security CLI. **Phases 0 through 3 are implemented.**
 Detect likely hardcoded credentials offline in Git-staged additions, or opt into
 a working-tree scan. Reports contain sanitized metadata and fully redacted samples.
 Verification defaults to a deterministic offline mock. Explicitly enabled Gemini
-verification receives only sanitized structural context. Remediation, pre-commit
-integration, and CI integration are not implemented.
+verification receives only sanitized structural context. Conservative remediation
+requires a validated plan and developer approval. Pre-commit and CI integration
+are not implemented.
 
 ## Windows PowerShell setup
 
@@ -160,8 +161,9 @@ detection confidence, evidence, location, verification status and review advice.
 overwritten. Failed scans emit a safe stderr diagnostic and no success report.
 The output destination must be new, writable, outside `.git`, with no linked parents.
 
-`explain`, `fix`, and `init` remain explicit placeholders returning **3** without
-changing files. Git-ref scan arguments must be paired, but ref comparison itself
+`explain` reconstructs a current staged finding without persisting secrets. `fix`
+previews or applies an approved deterministic patch. `init` remains an explicit
+placeholder returning **3**. Git-ref scan arguments must be paired, but ref comparison itself
 is deferred to Phase 4. This release does not interpret a checkout index as a PR diff.
 
 | Code | Contract |
@@ -170,6 +172,36 @@ is deferred to Phase 4. This release does not interpret a checkout index as a PR
 | 1 | Findings at/above configured blocking severity |
 | 2 | Invocation/configuration/credential error or missing live consent |
 | 3 | Scan/validation failure or an unimplemented operation (fail closed) |
+
+## Safe remediation
+
+```powershell
+.\.venv\Scripts\codeshield.exe scan --staged
+.\.venv\Scripts\codeshield.exe explain FINDING_ID
+.\.venv\Scripts\codeshield.exe fix FINDING_ID --dry-run
+.\.venv\Scripts\codeshield.exe fix FINDING_ID --apply
+```
+
+Fixing defaults to dry-run. Apply shows a redacted structural diff and requires
+interactive approval, or explicit `--apply --yes` for trusted local automation.
+Only plain module-level Python string assignments and identified server-side
+Node.js declarations are eligible. Browser frameworks and ambiguous transformations
+are refused. Python uses AST validation; Node uses Tree-sitter plus trusted
+`node --check` without executing the application. Node.js is required for Node fixes.
+
+The default adds a blank `.env.example` entry, never a credential. Explicit
+`--store-secret` additionally approves storing the current value in a private,
+untracked, Git-ignored `.env`. Existing values are not overwritten. Writes use
+guarded snapshots, atomic replacements and in-memory rollback copies. No operation
+automatically stages, commits, pushes or rotates credentials. An applied fix exits
+**1** with `fix_applied_to_worktree_requires_restage`: review all changes, restage
+intentionally, and rerun the staged scan. The original index remains blocked.
+
+Remediation requires no Gemini calls. Mock remains the default, and explicit
+rules-only operation works offline. Fix/explain refuse `gemini` selection rather
+than silently falling back after a provider failure; optional advisory Gemini
+verification stays a separate explicit scan with the existing cache/budget limits.
+See [remediation safety, environment setup, rollback and limitations](docs/remediation.md).
 
 ## Project structure
 
@@ -182,20 +214,24 @@ is deferred to Phase 4. This release does not interpret a checkout index as a PR
 - `codeshield/reporting.py`: sanitized human/JSON rendering and exclusive output.
 - `codeshield/agent/`: finite-vocabulary sanitizer, read-only tools, providers,
   strict verification, bounded workflow, conservative policy and safe cache.
+- `codeshield/remediation/`: runtime identification, guarded snapshots, byte-range
+  plans, permissions, atomic apply/rollback and allowlisted syntax validation.
 - `tests/unit/`: configuration/schema validation.
 - `tests/integration/`: installed CLI, Git diagnostics, failure and no-write checks.
 - `docs/architecture.md`: boundaries and deferred work.
 
 The CLI uses standard-library `argparse`; Pydantic validates contracts, `regex`
 provides matching timeouts, and pytest runs tests. Direct dependencies are pinned
-in `pyproject.toml`. The optional `gemini` extra adds the official `google-genai`
+in `pyproject.toml`. Tree-sitter and its JavaScript grammar support safe Node
+planning. The optional `gemini` extra adds the official `google-genai`
 SDK and `python-dotenv`. The base install remains offline and has no provider SDK.
 
 Do not commit real credentials. `.env` and local caches are ignored; only the blank
 `.env.example` is intended for version control. Schemas reject unknown fields but
 cannot prove arbitrary text is sanitized: later detection/reporting must enforce
-redaction before constructing findings. Verification is advisory; remediation and
-credential rotation are not implemented. No security guarantee is made.
+redaction before constructing findings. Verification is advisory; remediation is
+conservative and approval-based. Credential rotation is not implemented. No
+security guarantee is made.
 
 Detection is heuristic, not a complete language parser. Split/encoded/dynamically
 assembled secrets, unfamiliar formats, and complex multiline literals may be
@@ -209,4 +245,5 @@ tested with an intercepted HTTP transport; account access, model availability,
 actual billing, and end-to-end live API connectivity are not tested automatically.
 The verification deadline gates attempts and rejects late responses; SDK I/O
 timeouts are not a hard process-cancellation mechanism.
-Phase 3 requires a separate go-ahead.
+Remediation proves the supported transformation and syntax, not full runtime
+behavior or deployment configuration. Phase 4 requires a separate go-ahead.
