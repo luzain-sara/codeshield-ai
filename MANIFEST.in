@@ -1,0 +1,13 @@
+include README.md LICENSE CHANGELOG.md SECURITY.md CONTRIBUTING.md
+include requirements.lock requirements-dev.lock codeshield.toml
+recursive-include codeshield *.py
+recursive-include docs *.md
+recursive-include tests *.py
+recursive-include examples *.py *.md
+recursive-include scripts *.py
+prune .git
+prune .venv
+prune .codeshield
+global-exclude .env .env.* *.pem *.key *.py[cod]
+include .env.example
+recursive-include examples .env.example .gitignore

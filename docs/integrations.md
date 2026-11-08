@@ -139,4 +139,4 @@ destination. Building needs package/image downloads; runtime scans need no
 network. The smoke check tests clean/blocking results, redaction, no mutation and
 error codes with networking disabled. Docker is unavailable on the implementation
 machine; the actual build/run is delegated to the supplied CI job and has not
-been executed locally. Phase 5 release/demo work is outside this implementation.
+been executed locally. See [release readiness](release-readiness.md) for final validation.

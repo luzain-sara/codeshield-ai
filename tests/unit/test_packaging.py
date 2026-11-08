@@ -77,4 +77,6 @@ def test_docker_build_uses_allowlisted_inputs_and_offline_nonroot_runtime():
     assert "--require-hashes --only-binary=:all:" in text
     assert "USER 10001:10001" in text and '"-I"' in text
     assert "COPY . " not in text and "gemini" not in text.lower()
+    assert "README.md LICENSE ./" in text
+    assert "!LICENSE" in (ROOT / ".dockerignore").read_text()
     assert (ROOT / ".dockerignore").read_text().startswith("**\n")

@@ -1,8 +1,9 @@
 # Foundation contracts
 
-Phases 0 through 4 contain CLI, configuration, offline detection, Git snapshot selection,
+Phases 0 through 5 contain CLI, configuration, offline detection, Git snapshot selection,
 reporting, bounded verification, approved remediation and offline developer gates.
-Phase 5 has not begun.
+Phase 5 adds process-level journeys, failure recovery checks and release preparation;
+external verification status is recorded in release-readiness.md.
 
 Configuration flows from a local TOML file into immutable, validated Pydantic
 models. Unknown fields fail validation. CLI errors never echo parser/schema
@@ -146,3 +147,22 @@ an automation guard that also rejects direct live-provider opt-in. They never
 invoke remediation or stage files. CI reports are exclusively created and
 contain only the existing sanitized schema or a fixed failure envelope. See
 [integrations.md](integrations.md) for history, installation and runtime limits.
+
+## Final hardening and release preparation
+
+All entry points share `SafeArgumentParser`: diagnostics never echo supplied
+arguments, and abbreviated opt-in flags are rejected. Initialization exclusively
+creates missing public defaults, never reads existing credentials or overwrites
+configuration. The automation marker also disables remediation planning/apply.
+Dotenv scanning keeps bare assignments on their own line; empty adjacent YAML
+keys cannot become credential values. Worktree scope canonicalizes Windows short
+path aliases after link checks so containment uses the same representation as Git.
+
+End-to-end tests exercise separate CLI processes for Python and Node.js, explicit
+approval, unchanged index, restaging, native hooks, ref scans and CI artifacts.
+The official SDK's transport is intercepted for verification-to-remediation tests;
+no live quota is used. Interruptions and stale locks are tested for safe recovery.
+Distribution checks build from a clean allowlisted source copy, inject only
+synthetic exclusion canaries, inspect wheel/sdist contents and verify a fresh
+installed CLI without the optional Gemini SDK. A source copy is used because
+these uncommitted changes cannot exist in a fresh remote clone yet.

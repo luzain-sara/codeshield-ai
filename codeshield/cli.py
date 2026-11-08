@@ -1,6 +1,7 @@
 """Offline detection CLI with fail-closed, non-mutating scan commands."""
 
 import argparse
+from codeshield.arguments import SafeArgumentParser
 import shutil
 import subprocess
 import sys
@@ -73,20 +74,20 @@ def doctor(config_path: Path | None, provider: str | None) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="codeshield", description="CodeShield-AI: local security scanning and developer gates (Phase 4)."
+    parser = SafeArgumentParser(
+        prog="codeshield", description="CodeShield-AI: local credential scanning, verification and approved remediation."
     )
     parser.add_argument("--version", action="version", version=f"codeshield {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("init", help="Create missing offline defaults without overwriting existing files")
     hook = commands.add_parser("hook", help="Install or remove the managed offline pre-commit gate")
     hook.add_argument("action", choices=("install", "uninstall"))
-    for name in ("doctor", "scan", "explain", "fix", "init"):
+    for name in ("doctor", "scan", "explain", "fix"):
         command = commands.add_parser(name, help=(
             "Check foundation setup" if name == "doctor" else
             "Scan staged additions (default) or an explicit worktree path" if name == "scan" else
             "Explain a current staged finding without storing secrets" if name == "explain" else
-            "Preview or approve a conservative working-tree fix" if name == "fix" else
-            "Reserved; unavailable in Phase 4"
+            "Preview or approve a conservative working-tree fix"
         ))
         command.add_argument("--config", type=Path, help="Explicit TOML configuration file")
         command.add_argument("--provider", choices=[p.value for p in Provider])
@@ -115,6 +116,14 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "init":
+        from codeshield.initialization import initialize
+        try:
+            sys.stdout.write(initialize(Path.cwd()))
+            return ExitCode.SUCCESS
+        except (ScanError, OSError, ValueError):
+            print("Initialization incomplete; existing files were preserved. Review defaults and rerun init.", file=sys.stderr)
+            return ExitCode.VALIDATION_FAILURE
     if args.command == "hook":
         from codeshield.integrations import manage_hook
         try:
@@ -201,8 +210,4 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, UnicodeError, ValueError, TimeoutError):
             print("Scan or report validation failed; no complete result is available.", file=sys.stderr)
             return ExitCode.VALIDATION_FAILURE
-    print(
-        f"{args.command} is not implemented in Phase 4. No scan or file changes performed.",
-        file=sys.stderr,
-    )
     return ExitCode.VALIDATION_FAILURE

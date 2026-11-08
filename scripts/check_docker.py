@@ -29,7 +29,7 @@ def check(image):
 
         sentinel = "SyntheticContainerSentinel9_wQ!"
         assert run("--staged", "--format", "json").returncode == 0, "Clean staged scan failed"
-        source.write_text(f'password="{sentinel}"\n', encoding="utf-8")
+        source.write_text(f'password="{sentinel}"\n', encoding="utf-8")  # codeshield: test-fixture
         git("add", ".")
         before = source.read_bytes(), (root / ".git/index").read_bytes()
         result = run("--staged", "--format", "json")

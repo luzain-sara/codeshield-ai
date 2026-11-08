@@ -39,7 +39,7 @@ def quiet_transport():
 
 def in_ci() -> bool:
     return any(os.environ.get(name, "").lower() not in ("", "0", "false", "no")
-               for name in ("CI", "GITHUB_ACTIONS", "GITLAB_CI", "TF_BUILD"))
+               for name in ("CI", "GITHUB_ACTIONS", "GITLAB_CI", "TF_BUILD", "CODESHIELD_AUTOMATED"))
 
 
 def require_live_opt_in(enabled: bool):

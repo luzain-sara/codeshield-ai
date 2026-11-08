@@ -2,7 +2,7 @@
 FROM python:3.14-bookworm@sha256:3fe825da0a80fa8e2cd79baadeb76b03c0ddf3d6cdbc8346778a0208b9d6038c
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1 CI=true CODESHIELD_AUTOMATED=1
 WORKDIR /opt/codeshield
-COPY requirements.lock pyproject.toml README.md ./
+COPY requirements.lock pyproject.toml README.md LICENSE ./
 COPY codeshield/ ./codeshield/
 RUN git --version \
     && python -m pip install --no-cache-dir --require-hashes --only-binary=:all: -r requirements.lock \

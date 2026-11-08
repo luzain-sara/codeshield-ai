@@ -163,6 +163,27 @@ def test_model_false_positive_does_not_remove_blocking_staged_finding(git_repo, 
     assert not result.findings[0].verification.fix_allowed
 
 
+def test_intercepted_sdk_verification_to_explicit_offline_remediation(git_repo, intercepted_sdk):
+    from codeshield.agent.workflow import plan_fix
+    from codeshield.remediation.patcher import apply_plan
+    root, git, write = git_repo
+    write("app.py", f'API_KEY="{SECRET}"\n')  # codeshield: test-fixture
+    git("add", ".")
+    intercepted_sdk.queue.append((200, response_body()))
+    report = scan(Config(provider="gemini"), cwd=root, live_enabled=True)
+    finding, = report.findings
+    assert finding.assessment_source == Provider.GEMINI and not finding.verification.fix_allowed
+    plan = plan_fix(finding.finding_id, Config(), cwd=root)
+    preview = plan.preview()
+    result = apply_plan(plan, approved=True)
+    assert len(intercepted_sdk.requests) == 1  # Planning/apply never initiate another provider call.
+    payload = intercepted_sdk.requests[0].content.decode()
+    assert all(value not in report.model_dump_json() + preview + result + payload for value in (SECRET, OTHER, KEY))
+    assert scan(Config(), cwd=root).summary.blocking == 1
+    git("add", "app.py")
+    assert scan(Config(), cwd=root).summary.blocking == 0
+
+
 def test_cli_api_failure_reports_uncertain_and_exits_three(git_repo, intercepted_sdk, monkeypatch, capsys):
     root, git, write = git_repo
     write("app.py", f'password="{SECRET}"\n')

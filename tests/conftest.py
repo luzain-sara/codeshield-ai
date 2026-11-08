@@ -8,7 +8,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def offline_provider_environment(monkeypatch):
-    for name in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "CI", "GITHUB_ACTIONS", "GITLAB_CI", "TF_BUILD"):
+    for name in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "CI", "GITHUB_ACTIONS", "GITLAB_CI", "TF_BUILD", "CODESHIELD_AUTOMATED"):
         monkeypatch.delenv(name, raising=False)
 
     def deny_network(*args, **kwargs):

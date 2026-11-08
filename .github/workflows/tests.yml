@@ -31,6 +31,7 @@ jobs:
           python -m pip check
       - run: python -m pytest -q
       - run: python -m compileall -q codeshield
+      - run: python scripts/check_install.py
   docker:
     runs-on: ubuntu-24.04
     steps:

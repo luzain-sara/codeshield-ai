@@ -2,6 +2,7 @@
 !requirements.lock
 !pyproject.toml
 !README.md
+!LICENSE
 !codeshield/
 !codeshield/**/
 !codeshield/**/*.py

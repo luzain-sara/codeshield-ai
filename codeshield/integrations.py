@@ -1,6 +1,6 @@
 """Offline developer gates. No integration path can opt into Gemini or apply fixes."""
 
-import argparse
+from codeshield.arguments import SafeArgumentParser
 from contextlib import contextmanager
 import json
 import os
@@ -30,7 +30,7 @@ def automated():
 
 def hook_main(argv: list[str] | None = None) -> int:
     from codeshield.cli import main
-    argparse.ArgumentParser(prog="codeshield-hook").parse_args(argv)
+    SafeArgumentParser(prog="codeshield-hook").parse_args(argv)
     with automated():
         return main(["scan", "--staged", "--provider", "mock"])
 
@@ -117,7 +117,7 @@ def event_refs(event: str, data: dict) -> tuple[str, str, bool] | None:
 def ci_main(argv: list[str] | None = None) -> int:
     from codeshield.cli import main
     from codeshield.reporting import write_report
-    parser = argparse.ArgumentParser(prog="codeshield-ci", description="Offline GitHub event comparison gate")
+    parser = SafeArgumentParser(prog="codeshield-ci", description="Offline GitHub event comparison gate")
     parser.add_argument("--event", choices=("pull_request", "push"), default=os.environ.get("GITHUB_EVENT_NAME"))
     parser.add_argument("--event-file", type=Path, default=Path(os.environ["GITHUB_EVENT_PATH"]) if os.environ.get("GITHUB_EVENT_PATH") else None)
     parser.add_argument("--output", type=Path, required=True)
@@ -164,7 +164,7 @@ def ci_main(argv: list[str] | None = None) -> int:
 def docker_main(argv: list[str] | None = None) -> int:
     """Scan-only container interface. The optional provider SDK is absent from the image."""
     from codeshield.cli import main
-    parser = argparse.ArgumentParser(prog="codeshield-docker", description="Offline scan-only container")
+    parser = SafeArgumentParser(prog="codeshield-docker", description="Offline scan-only container")
     scope = parser.add_mutually_exclusive_group()
     scope.add_argument("--staged", action="store_true")
     scope.add_argument("--path")
@@ -190,7 +190,7 @@ def docker_main(argv: list[str] | None = None) -> int:
 
 
 def entrypoint():
-    parser = argparse.ArgumentParser(prog="python -m codeshield.integrations")
+    parser = SafeArgumentParser(prog="python -m codeshield.integrations")
     parser.add_argument("integration", choices=("hook", "ci", "docker"))
     args, remaining = parser.parse_known_args()
     if args.integration == "hook":

@@ -71,15 +71,23 @@ def test_invalid_config_does_not_leak(repo):
     assert "FAKE_CLI_SENTINEL" not in result.stdout + result.stderr
 
 
-@pytest.mark.parametrize("args", [
-    ["init"],
-])
-def test_unimplemented_commands_fail_closed_and_do_not_write(repo, args):
-    before = set(repo.rglob("*"))
-    result = cli(repo, *args)
-    assert result.returncode == 3
-    assert "not implemented in Phase 4" in result.stderr
-    assert set(repo.rglob("*")) == before
+def test_init_creates_only_missing_defaults_without_reading_env(repo):
+    (repo / ".env").write_text("PRIVATE_INIT_SENTINEL", encoding="utf-8")
+    original = (repo / ".gitignore").read_bytes()
+    result = cli(repo, "init")
+    assert result.returncode == 0
+    assert "PRIVATE_INIT_SENTINEL" not in result.stdout + result.stderr
+    assert (repo / ".gitignore").read_bytes() == original
+    assert (repo / "codeshield.toml").read_text().startswith('provider = "mock"')
+    assert "GEMINI_API_KEY=\n" in (repo / ".env.example").read_text()
+    before = {p: p.read_bytes() for p in repo.iterdir() if p.is_file()}
+    assert cli(repo, "init").returncode == 0
+    assert before == {p: p.read_bytes() for p in repo.iterdir() if p.is_file()}
+
+
+def test_init_outside_git_fails_closed(tmp_path):
+    assert cli(tmp_path, "init").returncode == 3
+    assert not list(tmp_path.iterdir())
 
 
 def test_scan_does_not_create_or_overwrite_report(repo):

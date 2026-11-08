@@ -11,7 +11,7 @@ from codeshield.errors import ScanError
 from codeshield.integrations import automated, ci_main, docker_main, event_refs, hook_main, manage_hook
 from codeshield.scanner import scan
 
-SECRET = "SyntheticPhaseFourSentinel8_qZ!"
+SECRET = "SyntheticPhaseFourSentinel8_qZ!"  # codeshield: test-fixture
 
 
 def commit(git):
@@ -22,9 +22,9 @@ def commit(git):
 
 def test_ref_scan_uses_immutable_trees_and_only_added_lines(git_repo):
     root, git, write = git_repo
-    write("app.py", f'password="{SECRET}"\nanswer=1\n')
+    write("app.py", f'password="{SECRET}"\nanswer=1\n')  # codeshield: test-fixture
     base = commit(git)
-    write("app.py", f'password="{SECRET}"\nanswer=2\napi_key="{SECRET}"\n')
+    write("app.py", f'password="{SECRET}"\nanswer=2\napi_key="{SECRET}"\n')  # codeshield: test-fixture
     head = commit(git)
     source = write("app.py", "answer=3\n")
     git("add", ".")
@@ -40,7 +40,7 @@ def test_ref_scan_uses_immutable_trees_and_only_added_lines(git_repo):
 @pytest.mark.parametrize("ending", ["", "\n", "\r\n"])
 def test_new_branch_empty_tree_and_tags(git_repo, ending):
     root, git, write = git_repo
-    write("file with spaces.py", f'api_key="{SECRET}"' + ending)
+    write("file with spaces.py", f'api_key="{SECRET}"' + ending)  # codeshield: test-fixture
     head = commit(git)
     git("tag", "-a", "snapshot", "-m", "synthetic tag")
     report = scan(Config(), cwd=root, base_ref="EMPTY", head_ref="snapshot")
@@ -51,14 +51,14 @@ def test_new_branch_empty_tree_and_tags(git_repo, ending):
 @pytest.mark.parametrize("edited", [False, True])
 def test_refs_rename_and_deletion(git_repo, edited):
     root, git, write = git_repo
-    text = f'password="{SECRET}"\n' + 'answer=1\n' * 30
+    text = f'password="{SECRET}"\n' + 'answer=1\n' * 30  # codeshield: test-fixture
     write("old.py", text)
-    write("removed.py", f'password="{SECRET}"\n')
+    write("removed.py", f'password="{SECRET}"\n')  # codeshield: test-fixture
     base = commit(git)
     git("mv", "old.py", "new name.py")
     git("rm", "removed.py")
     if edited:
-        write("new name.py", text + f'api_key="{SECRET}"\n')
+        write("new name.py", text + f'api_key="{SECRET}"\n')  # codeshield: test-fixture
     head = commit(git)
     result = scan(Config(), cwd=root, base_ref=base, head_ref=head)
     assert len(result.findings) == int(edited)
@@ -69,10 +69,10 @@ def test_pr_merge_base_differs_from_endpoint_diff(git_repo):
     write("app.py", "answer=1\n")
     common = commit(git)
     git("branch", "feature")
-    write("app.py", f'api_key="{SECRET}"\n')
+    write("app.py", f'api_key="{SECRET}"\n')  # codeshield: test-fixture
     base = commit(git)
     git("checkout", "feature")
-    write("app.py", f'api_key="{SECRET}"\n')
+    write("app.py", f'api_key="{SECRET}"\n')  # codeshield: test-fixture
     write("feature.py", "answer=2\n")
     head = commit(git)
     assert not scan(Config(), cwd=root, base_ref=base, head_ref=head).findings
@@ -92,7 +92,7 @@ def test_bad_refs_fail_closed_without_echo(git_repo, ref):
 
 def test_ref_comparison_ignores_unmerged_index(git_repo):
     root, git, write = git_repo
-    write("a.py", f'password="{SECRET}"\n')
+    write("a.py", f'password="{SECRET}"\n')  # codeshield: test-fixture
     head = commit(git)
     oid = git("hash-object", "-w", "--stdin", input=b"answer=1\n").strip()
     git("update-index", "--index-info", input=b"100644 " + oid + b" 1\tconflict.py\n")
@@ -105,7 +105,7 @@ def test_native_hook_blocks_staged_secret_and_allows_clean_commit(git_repo):
     assert "already installed" in manage_hook("install", root)
     write("app.py", "answer=1\n")
     commit(git)
-    write("app.py", f'password="{SECRET}"\n')
+    write("app.py", f'password="{SECRET}"\n')  # codeshield: test-fixture
     git("add", "app.py")
     write("app.py", "answer=2\n")
     before = git("ls-files", "--stage", "-z")
@@ -138,7 +138,7 @@ def test_hook_preserves_existing_and_supports_local_hooks_path(git_repo):
 def test_hook_forces_mock_over_repository_provider(git_repo, monkeypatch, capsys):
     root, git, write = git_repo
     write("codeshield.toml", 'provider="gemini"\n')
-    write("app.py", f'password="{SECRET}"\n')
+    write("app.py", f'password="{SECRET}"\n')  # codeshield: test-fixture
     git("add", ".")
     monkeypatch.chdir(root)
     assert hook_main([]) == 1
@@ -171,7 +171,7 @@ def test_ci_redacted_report_and_no_mutation(git_repo, monkeypatch, capsys, event
     root, git, write = git_repo
     write("app.py", "answer=1\n")
     base = commit(git)
-    source = write("app.py", f'password="{SECRET}"\n')
+    source = write("app.py", f'password="{SECRET}"\n')  # codeshield: test-fixture
     head = commit(git)
     payload = {"before": base, "after": head} if event == "push" else {"pull_request": {"base": {"sha": base}, "head": {"sha": head}}}
     write("event.json", json.dumps(payload))
@@ -219,7 +219,7 @@ def test_docker_interface_rejects_live_and_mutation(args):
 
 def test_docker_interface_scans_offline(git_repo, monkeypatch):
     root, git, write = git_repo
-    write("app.py", f'password="{SECRET}"\n')
+    write("app.py", f'password="{SECRET}"\n')  # codeshield: test-fixture
     git("add", ".")
     monkeypatch.chdir(root)
     assert docker_main([]) == 1
@@ -230,7 +230,7 @@ def test_ref_resolution_is_not_repeated_after_branch_moves(git_repo, monkeypatch
     root, git, write = git_repo
     write("app.py", "answer=1\n")
     base = commit(git)
-    write("app.py", f'password="{SECRET}"\n')
+    write("app.py", f'password="{SECRET}"\n')  # codeshield: test-fixture
     head = commit(git)
     original = scanner_module.ref_changes
 
@@ -247,7 +247,7 @@ def test_shallow_history_does_not_fall_back_to_index(git_repo):
     root, git, write = git_repo
     write("app.py", "answer=1\n")
     base = commit(git)
-    write("app.py", f'password="{SECRET}"\n')
+    write("app.py", f'password="{SECRET}"\n')  # codeshield: test-fixture
     head = commit(git)
     clone = root.parent / (root.name + "-shallow")
     subprocess.run(["git", "clone", "--depth=1", root.as_uri(), str(clone)], check=True, capture_output=True)

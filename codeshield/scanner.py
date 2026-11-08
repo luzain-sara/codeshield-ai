@@ -88,6 +88,8 @@ def scan(config: Config, *, path: Path | None = None, cwd: Path | None = None,
         if any(is_link(parent) for parent in (requested, *requested.parents)):
             raise ScanError("Working-tree scan path must not traverse links.")
         try:
+            # Normalize Windows short-path aliases only after rejecting filesystem links.
+            requested = requested.resolve(strict=True)
             requested_mode = requested.stat().st_mode
         except OSError:
             raise ScanError("Working-tree scan path is missing or unreadable.") from None
@@ -123,15 +125,17 @@ def scan(config: Config, *, path: Path | None = None, cwd: Path | None = None,
         files_scanned += 1
         pending = []
         prefix = ""
-        allow_bare = relative.lower().endswith((".yaml", ".yml")) or PurePosixPath(relative).name.lower().startswith(".env")
+        dotenv = PurePosixPath(relative).name.lower().startswith(".env")
+        allow_bare = relative.lower().endswith((".yaml", ".yml")) or dotenv
         cleaned_lines = code_lines(text, relative)
         for number, line in enumerate(cleaned_lines, 1):
             git.check_deadline()
-            own_assignment = bool(prefix and ASSIGNMENT.match(line.lstrip(), timeout=0.05))
+            own_assignment = bool(prefix and (KEY_ONLY.fullmatch(line.strip()) or ASSIGNMENT.match(line.lstrip(), timeout=0.05)))
             context = line if own_assignment else prefix + line
             offset = 0 if own_assignment else len(prefix)
             if line.strip():
-                prefix = line.rstrip().removesuffix("(") + " " if KEY_ONLY.fullmatch(line.strip()) else ""
+                # Dotenv assignments do not continue onto an unquoted following line.
+                prefix = line.rstrip().removesuffix("(") + " " if not dotenv and KEY_ONLY.fullmatch(line.strip()) else ""
             if additions is not None and number not in additions:
                 continue
             for candidate in detector.find(context, allow_bare=allow_bare):
