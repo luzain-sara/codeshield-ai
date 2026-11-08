@@ -1,6 +1,7 @@
 import shutil
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 import pytest
@@ -30,7 +31,7 @@ def test_help_and_version(tmp_path):
 
 
 def test_installed_console_entrypoint(tmp_path):
-    executable = Path(sys.executable).parent / ("codeshield.exe" if sys.platform == "win32" else "codeshield")
+    executable = Path(sysconfig.get_path("scripts")) / ("codeshield.exe" if sys.platform == "win32" else "codeshield")
     result = subprocess.run([str(executable), "--version"], cwd=tmp_path,
                             capture_output=True, text=True, timeout=15)
     assert result.returncode == 0

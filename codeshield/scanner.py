@@ -85,9 +85,9 @@ def scan(config: Config, *, path: Path | None = None, cwd: Path | None = None,
     requested_is_file = False
     if path is not None:
         requested = Path(os.path.abspath(cwd / path))
-        if any(is_link(parent) for parent in (requested, *requested.parents)):
-            raise ScanError("Working-tree scan path must not traverse links.")
         try:
+            if any(is_link(parent) for parent in (requested, *requested.parents)):
+                raise ScanError("Working-tree scan path must not traverse links.")
             # Normalize Windows short-path aliases only after rejecting filesystem links.
             requested = requested.resolve(strict=True)
             requested_mode = requested.stat().st_mode

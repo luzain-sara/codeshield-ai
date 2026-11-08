@@ -415,3 +415,29 @@ def test_missing_path_is_failure(git_repo):
     root, git, write = git_repo
     with pytest.raises(ScanError, match="missing"):
         scan(Config(), cwd=root, path=Path("missing.py"))
+
+
+@pytest.mark.parametrize("method", ["is_symlink", "is_junction"])
+@pytest.mark.parametrize("location", ["target", "parent"])
+def test_unreadable_link_metadata_is_redacted_scan_failure(git_repo, monkeypatch, capsys, method, location):
+    from codeshield.cli import main
+    root, git, write = git_repo
+    target = write("a.py", "answer=1\n")
+    denied = target if location == "target" else root
+    original = getattr(Path, method)
+
+    def deny(self, *args, **kwargs):
+        if self == denied:
+            raise PermissionError("RAW_PERMISSION_PAYLOAD")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.chdir(root)
+    monkeypatch.setattr(Path, method, deny)
+    with pytest.raises(ScanError, match="unreadable") as exc:
+        scan(Config(), cwd=root, path=Path("a.py"))
+    assert "RAW_PERMISSION_PAYLOAD" not in str(exc.value)
+    assert main(["scan", "--path", "a.py", "--output", "report.json"]) == 3
+    captured = capsys.readouterr()
+    assert not captured.out and "RAW_PERMISSION_PAYLOAD" not in captured.err
+    assert "unreadable" in captured.err
+    assert not (root / "report.json").exists()
